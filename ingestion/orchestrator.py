@@ -1,102 +1,230 @@
 import os
+
+os.chdir("/Users/himanshu/projects/journalling-assitant")
 import sys
-import datetime
 
-# Add the project root to the Python path to allow importing from the 'db' package
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.getcwd())
+import logging
+from typing import Union, List, Dict, Any, Optional
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine
+import re
+import asyncio
 
-from db import get_db, DocumentCRUD, init_db
-from ingestion.parsing import html_to_markdown, parse_pdf
+# Import from your existing files
+from db import Document, DocumentStatus, session_scope
+from ingestion import html_to_markdown, parse_pdf
+from ingestion import MarkdownChunker, Config as ChunkingConfig
+from ingestion import VectorStoreManager, VectorStoreConfig
+
+# from database import session_scope
+
+# LangChain's Document class for type hinting
+from langchain.schema import Document as LangchainDocument
+
+# --- Logging Configuration ---
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
+# --- Helper Functions for Serialization ---
+def serialize_docs(docs: List[LangchainDocument]) -> List[Dict[str, Any]]:
+    """Converts a list of Langchain Documents to a JSON-serializable format."""
+    return [
+        {"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs
+    ]
+
+
+def deserialize_docs(serialized_docs: List[Dict[str, Any]]) -> List[LangchainDocument]:
+    """Converts a list of serialized documents back into Langchain Document objects."""
+    return [
+        LangchainDocument(page_content=doc["page_content"], metadata=doc["metadata"])
+        for doc in serialized_docs
+    ]
 
 
 class IngestionOrchestrator:
-    def __init__(self):
-        self.db_session = next(get_db())
-        self.crud_handler = DocumentCRUD(self.db_session)
+    """
+    Orchestrates the document ingestion pipeline: parsing, chunking, and embedding.
+    It acts as a state machine, processing documents based on their current status.
+    """
 
-    def _extract_title_from_markdown(self, markdown: str) -> str:
-        """(Private) Extracts the first H1 header to use as a title."""
-        lines = markdown.strip().split("\n")
-        for line in lines:
-            if line.startswith("# "):
-                return line[2:].strip()
-        # Fallback to the first non-empty line
-        for line in lines:
-            if line.strip():
-                return (
-                    (line.strip()[:75] + "...")
-                    if len(line.strip()) > 75
-                    else line.strip()
-                )
-        return "Untitled Document"
-
-    def _generate_metadata(self, markdown: str, source: str) -> dict:
-        """(Private) Generates metadata for a document."""
-        return {
-            "created_at": datetime.datetime.now().isoformat(),
-            "word_count": len(markdown.split()),
-            "source": source.strip(),  ## Ensure source is stripped of whitespace
-        }
-
-    def ingest_source(
-        self, source: str, tags: list[str], title: str = None, description: str = None
+    def __init__(
+        self,
+        vector_store_config: VectorStoreConfig,
+        chunking_config: Optional[ChunkingConfig] = None,
     ):
-        """
-        Ingests a source (URL or PDF file path), parses it, and stores it in the database.
+        self.vector_store_manager = VectorStoreManager(config=vector_store_config)
+        self.chunking_config = chunking_config
+        logging.info("Orchestrator initialized.")
 
-        Args:
-            source (str): The URL or the absolute file path to the PDF.
-            tags (list[str]): A list of tags for the document.
+    async def process(self, source: Union[str, int]) -> int:
         """
-        print(f"--- Starting ingestion for: {source} ---")
-        markdown_content = None
-        self.source = source
+        Main entry point to process a document.
+        Returns the document ID instead of the detached instance.
+        """
+        with session_scope() as db:
+            doc = self._get_or_create_document(source, db)
+            doc_id = doc.id  # Get the ID while session is active
 
-        # 1. Determine source type and parse the content to Markdown
-        if source.startswith("http://") or source.startswith("https://"):
-            print("Source identified as URL. Parsing HTML...")
-            markdown_content = html_to_markdown(source)
-        elif source.endswith(".pdf") and os.path.exists(source):
-            print("Source identified as PDF. Parsing PDF...")
-            markdown_content = parse_pdf(source)
+            try:
+                await self._run_pipeline(doc, db)
+                return doc_id
+            except Exception as e:
+                logging.error(
+                    f"Critical error in pipeline for doc {doc.id}: {e}", exc_info=True
+                )
+                self._update_status(doc, DocumentStatus.FAILED, str(e), db)
+                raise
+
+    def _get_or_create_document(self, source: Union[str, int], db: Session) -> Document:
+        """
+        Retrieves a document from the DB if an ID is provided,
+        or creates a new one if a file path is provided.
+        """
+        if isinstance(source, int):
+            logging.info(f"Resuming processing for document ID: {source}")
+            doc = db.query(Document).filter(Document.id == source).first()
+            if not doc:
+                raise ValueError(f"No document found with ID {source}")
+            return doc
+        elif isinstance(source, str):
+            logging.info(f"Starting new ingestion for source: {source}")
+            doc = Document(file_path=source, status=DocumentStatus.PENDING)
+            db.add(doc)
+            db.commit()
+            db.refresh(doc)
+            return doc
         else:
-            print(f"Error: Source type not supported or file not found for '{source}'")
-            return
+            raise TypeError(
+                "Source must be either a string (file path/URL) or an integer (document ID)"
+            )
 
-        if not markdown_content:
-            print("Parsing failed or returned no content. Aborting ingestion.")
-            return
-
-        print(
-            f"Parsing successful. Markdown content length: {len(markdown_content)} characters."
+    async def _run_pipeline(self, doc: Document, db: Session) -> None:
+        """
+        Executes the ingestion pipeline steps based on the document's current status.
+        """
+        logging.info(
+            f"Running pipeline for doc {doc.id} with status: {doc.status.value}"
         )
 
-        # 2. Get a database session and store the content
+        # --- PARSING STAGE ---
+        if doc.status in [DocumentStatus.PENDING, DocumentStatus.PARSING]:
+            self._parse(doc, db)
+
+        # --- CHUNKING STAGE ---
+        if doc.status == DocumentStatus.PARSED:
+            await self._chunk(doc, db)
+
+        # --- EMBEDDING STAGE ---
+        if doc.status == DocumentStatus.CHUNKED:
+            self._embed(doc, db)
+
+        if doc.status == DocumentStatus.COMPLETED:
+            logging.info(f"Document {doc.id} has already been processed successfully.")
+
+    def _update_status(
+        self,
+        doc: Document,
+        status: DocumentStatus,
+        details: Optional[str] = None,
+        db: Session = None,
+    ):
+        """Safely updates the document's status in the database."""
+        doc.status = status
+        doc.status_details = details
+        if db:
+            db.commit()
+        logging.info(f"Updated doc {doc.id} status to: {status.value}")
+
+    def _parse(self, doc: Document, db: Session):
+        """Step 1: Parse the document from its source file path."""
+        self._update_status(doc, DocumentStatus.PARSING, db=db)
         try:
-            print("Storing content in the database...")
-            title = (
-                self._extract_title_from_markdown(markdown_content)
-                if not title
-                else title
-            )
-            description = description if description else ""
-            doc_metadata = self._generate_metadata(markdown_content, source)
-            new_doc = self.crud_handler.create_document(
-                title=title,
-                markdown=markdown_content,
-                tags=tags,
-                doc_metadata=doc_metadata,
-                description=description,
-            )
-            print("--- Ingestion successful! ---")
-            print(f"  - Document ID: {new_doc.id}")
-            print(f"  - Title: {new_doc.title}")
-            print(f"  - Tags: {new_doc.tags}")
+            content = None
+            if re.match(r"^https?://", doc.file_path, re.IGNORECASE):
+                logging.info(f"Parsing URL: {doc.file_path}")
+                content = html_to_markdown(doc.file_path)
+            elif doc.file_path.lower().endswith(".pdf"):
+                logging.info(f"Parsing PDF: {doc.file_path}")
+                content = parse_pdf(doc.file_path)
+            else:
+                raise ValueError(f"Unsupported file type for: {doc.file_path}")
+
+            if not content:
+                raise ValueError("Parsing resulted in empty content.")
+
+            doc.markdown = content
+            # Simple title extraction from the first H1 tag
+            match = re.search(r"^#\s+(.+)$", content.strip(), re.MULTILINE)
+            if match:
+                doc.title = match.group(1).strip()
+
+            self._update_status(doc, DocumentStatus.PARSED, db=db)
         except Exception as e:
-            print(f"An error occurred during the database operation: {e}")
-        finally:
-            self.db_session.close()
-            print("Database session closed.\n")
+            logging.error(f"Parsing failed for doc {doc.id}: {e}", exc_info=True)
+            self._update_status(
+                doc, DocumentStatus.FAILED, f"Parsing failed: {e}", db=db
+            )
+            raise
+
+    async def _chunk(self, doc: Document, db: Session):
+        """Step 2: Chunk the parsed markdown content."""
+        if not doc.markdown:
+            raise ValueError(f"Cannot chunk doc {doc.id}, markdown content is missing.")
+
+        self._update_status(doc, DocumentStatus.CHUNKING, db=db)
+        try:
+            chunker = MarkdownChunker(
+                text=doc.markdown, config=self.chunking_config, title=doc.title
+            )
+
+            chunks, stats = await chunker.chunk()
+            logging.info(f"Chunking stats for doc {doc.id}: {stats}")
+
+            doc.chunks = serialize_docs(chunks)
+            self._update_status(doc, DocumentStatus.CHUNKED, db=db)
+        except Exception as e:
+            logging.error(f"Chunking failed for doc {doc.id}: {e}", exc_info=True)
+            self._update_status(
+                doc, DocumentStatus.FAILED, f"Chunking failed: {e}", db=db
+            )
+            raise
+
+    def _embed(self, doc: Document, db: Session):
+        """Step 3: Embed the chunks and store them in the vector database."""
+        if not doc.chunks:
+            raise ValueError(f"Cannot embed doc {doc.id}, chunks are missing.")
+
+        self._update_status(doc, DocumentStatus.EMBEDDING, db=db)
+        try:
+            langchain_docs = deserialize_docs(doc.chunks)
+
+            # Add document ID to each chunk's metadata for traceability
+            for chunk in langchain_docs:
+                chunk.metadata["original_doc_id"] = doc.id
+                chunk.metadata["original_doc_title"] = doc.title
+
+            vector_ids = self.vector_store_manager.embed_documents(langchain_docs)
+
+            if len(vector_ids) != len(langchain_docs):
+                logging.warning(
+                    f"Mismatch in embedded docs for doc {doc.id}. Expected {len(langchain_docs)}, got {len(vector_ids)}"
+                )
+
+            self._update_status(
+                doc,
+                DocumentStatus.COMPLETED,
+                f"Successfully embedded {len(vector_ids)} chunks.",
+                db=db,
+            )
+        except Exception as e:
+            logging.error(f"Embedding failed for doc {doc.id}: {e}", exc_info=True)
+            self._update_status(
+                doc, DocumentStatus.FAILED, f"Embedding failed: {e}", db=db
+            )
+            raise
 
 
 if __name__ == "__main__":
@@ -107,29 +235,18 @@ if __name__ == "__main__":
 
     # --- (Optional) Run this once to initialize the database ---
     print("Initializing database...")
+    from db.database import init_db
+
     init_db()
     print("Database initialized.")
 
-    orchestrator = IngestionOrchestrator()
-
-    # --- Example 1: Ingesting an HTML page ---
-    html_source = "/Users/himanshu/projects/journalling-assitant/Books/Sutta_In_the_Buddhas_Words_-_An_Anthology_of_Discourses_from_the_Pali_Canon_pdf.pdf"
-    html_tags = [
-        "buddha's words",
-        "buddhism",
-        "buddhist texts",
-    ]
-    description = """
-    This document is an anthology of discourses from the Pali Canon, providing insights into the teachings of the Buddha.
-    """
-    orchestrator.ingest_source(
-        html_source,
-        html_tags,
-        # description=description,
+    orchestrator = IngestionOrchestrator(
+        vector_store_config=VectorStoreConfig(
+            collection_name="documents",
+            connection_string=os.getenv("DATABASE_URL"),
+        )
     )
-
-    # # --- Example 2: Ingesting a PDF document ---
-    # # PLEASE VERIFY this path is correct for your system.
-    # pdf_source = "/Users/himanshu/projects/journalling-assitant/Books/Sutta_In_the_Buddhas_Words_-_An_Anthology_of_Discourses_from_the_Pali_Canon_pdf.pdf"
-    # pdf_tags = ["sutta", "buddhism", "pdf", "anthology"]
-    # orchestrator.ingest_source(pdf_source, pdf_tags)
+    # Example usage
+    source = 2
+    # tags = ["example", "test"]
+    asyncio.run(orchestrator.process(source))

@@ -1,355 +1,365 @@
-# import logging
-# import re
-# from dataclasses import dataclass
-# from typing import Any, Dict, List, Optional, Tuple
-
-# from langchain.schema import Document
-# from langchain.text_splitter import MarkdownHeaderTextSplitter, MarkdownTextSplitter
-# from semantic_chunkers import StatisticalChunker
-# from semantic_router.encoders import HuggingFaceEncoder
-
-
-# # --- Configuration ---
-
-
-# @dataclass
-# class MarkdownChunkerConfig:
-#     """Configuration for the MarkdownHeaderChunker."""
-
-#     max_chunk_size: int = 2000
-#     min_chunk_size: int = 500
-#     max_header_level: int = 6
-
-
-# # --- Main Chunking Logic ---
-
-
-# class MarkdownHeaderChunker:
-#     """
-#     Chunks Markdown text using a multi-stage process to preserve semantic structure.
-
-#     The chunking process is as follows:
-#     1.  Recursively split the document by Markdown headers.
-#     2.  Split any resulting chunks that are still too large using a semantic chunker.
-#     3.  Combine any chunks that are too small with their neighbors.
-#     4.  Process and finalize the header metadata for each chunk.
-#     """
-
-#     def __init__(
-#         self,
-#         text: str,
-#         config: Optional[MarkdownChunkerConfig] = None,
-#         encoder: Optional[Any] = None,
-#     ):
-#         self.text = text
-#         self.config = config or MarkdownChunkerConfig()
-#         self.encoder = encoder or HuggingFaceEncoder(
-#             name="sentence-transformers/all-MiniLM-L6-v2"
-#         )
-
-#     async def chunk(self) -> List[Document]:
-#         """
-#         Executes the full chunking pipeline.
-
-#         Returns:
-#             A list of processed Document chunks.
-#         """
-#         # Stage 1: Split by headers
-#         header_split_chunks = await self._split_by_headers(self.text)
-
-#         # Stage 2: Split oversized chunks semantically
-#         semantically_split_chunks = await self._split_oversized_chunks(
-#             header_split_chunks
-#         )
-
-#         # Stage 3: Combine undersized chunks
-#         combined_chunks = self._combine_undersized_chunks(semantically_split_chunks)
-
-#         # Stage 4: Finalize metadata
-#         final_chunks = self._finalize_chunk_metadata(combined_chunks)
-
-#         return final_chunks
-
-#     async def _split_by_headers(self, text: str, level: int = 1) -> List[Document]:
-#         """Recursively splits text based on Markdown header levels."""
-#         if level > self.config.max_header_level:
-#             return [Document(page_content=text, metadata={})]
-
-#         headers_to_split_on = [
-#             (f"{{'#' * i}}", f"Header {i}") for i in range(1, level + 1)
-#         ]
-#         splitter = MarkdownHeaderTextSplitter(
-#             headers_to_split_on=headers_to_split_on, strip_headers=False
-#         )
-
-#         documents = []
-#         for doc in splitter.split_text(text):
-#             if len(doc.page_content) > self.config.max_chunk_size:
-#                 # If chunk is too big, go one level deeper
-#                 sub_chunks = await self._split_by_headers(doc.page_content, level + 1)
-#                 # Propagate parent metadata to children
-#                 for sub_chunk in sub_chunks:
-#                     sub_chunk.metadata = {**doc.metadata, **sub_chunk.metadata}
-#                     documents.append(sub_chunk)
-#             else:
-#                 documents.append(doc)
-#         return documents
-
-#     async def _split_oversized_chunks(self, chunks: List[Document]) -> List[Document]:
-#         """Identifies and splits chunks that exceed the maximum size."""
-#         processed_chunks = []
-#         for chunk in chunks:
-#             if len(chunk.page_content) > self.config.max_chunk_size:
-#                 split_chunks = await self._split_semantically(chunk)
-#                 processed_chunks.extend(split_chunks)
-#             else:
-#                 processed_chunks.append(chunk)
-#         return processed_chunks
-
-#     # @observe(name="semantic_chunking")
-#     async def _split_semantically(self, chunk: Document) -> List[Document]:
-#         """Performs semantic splitting on a single chunk."""
-#         try:
-#             chunker = StatisticalChunker(
-#                 encoder=self.encoder,
-#                 min_split_tokens=self.config.min_chunk_size,
-#                 max_split_tokens=self.config.max_chunk_size,
-#             )
-#             semantic_splits = await chunker.acall(docs=[chunk.page_content])
-
-#             new_docs = []
-#             if semantic_splits and semantic_splits[0]:
-#                 for split_group in semantic_splits[0]:
-#                     content = "".join(split_group.splits).replace("\x00", "").strip()
-#                     if content:
-#                         new_docs.append(
-#                             Document(page_content=content, metadata=chunk.metadata)
-#                         )
-#             logging.info("Semantically split one chunk into %d.", len(new_docs))
-#             return new_docs if new_docs else [chunk]
-#         except Exception as e:
-#             logging.error("Semantic splitting failed: %s. Returning original chunk.", e)
-#             return [chunk]
-
-#     def _combine_undersized_chunks(self, chunks: List[Document]) -> List[Document]:
-#         """Merges adjacent chunks that are smaller than the minimum size."""
-#         if not chunks:
-#             return []
-
-#         combined = []
-#         buffer = chunks[0]
-
-#         for next_chunk in chunks[1:]:
-#             if (len(buffer.page_content) < self.config.min_chunk_size) and (
-#                 len(buffer.page_content) + len(next_chunk.page_content)
-#                 <= self.config.max_chunk_size
-#             ):
-#                 # Merge content and find common metadata
-#                 buffer.page_content += "\n\n" + next_chunk.page_content
-#                 buffer.metadata = self._get_common_metadata(
-#                     buffer.metadata, next_chunk.metadata
-#                 )
-#             else:
-#                 combined.append(buffer)
-#                 buffer = next_chunk
-#         combined.append(buffer)
-#         return combined
-
-#     def _get_common_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
-#         """Finds the common header hierarchy between two chunks."""
-#         common_meta = {}
-#         for key, value in meta1.items():
-#             if key.startswith("Header ") and meta2.get(key) == value:
-#                 common_meta[key] = value
-#         return common_meta
-
-#     def _finalize_chunk_metadata(self, chunks: List[Document]) -> List[Document]:
-#         """Processes and sets the final metadata for each chunk."""
-#         final_chunks = []
-#         for chunk in chunks:
-#             parent_headers = self._parse_headers_from_metadata(chunk.metadata)
-#             header_info = process_markdown_headers(chunk.page_content, parent_headers)
-#             chunk.metadata = {"chunk_headers": header_info.get("ltree_format", {})}
-#             final_chunks.append(chunk)
-#         return final_chunks
-
-#     def _parse_headers_from_metadata(
-#         self,
-#         metadata: Dict[str, Any],
-#     ) -> List[Tuple[int, str]]:
-#         """Extracts header information from a metadata dictionary."""
-#         headers = []
-#         for key, value in metadata.items():
-#             if key.startswith("Header "):
-#                 try:
-#                     level = int(key.split(" ")[1])
-#                     headers.append((level, value))
-#                 except (IndexError, ValueError):
-#                     pass
-#         return sorted(headers)
-
-
-# # --- End of Chunking Logic ---
-
-
+import asyncio
 import logging
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from langchain.schema import Document
 from langchain.text_splitter import MarkdownHeaderTextSplitter
-
-# --- CHANGE: Import LangChain's own semantic chunker and embeddings ---
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+logger = logging.getLogger(__name__)
 
-# --- Configuration ---
+
+class ChunkingError(Exception):
+    """Chunking operation failed."""
+
+    pass
 
 
 @dataclass
-class MarkdownChunkerConfig:
-    """Configuration for the MarkdownHeaderChunker."""
+class Config:
+    """Chunker configuration."""
 
-    max_chunk_size: int = 2000
-    min_chunk_size: int = 500
+    max_size: int = 2000
+    min_size: int = 700
     max_header_level: int = 6
+    enable_semantic: bool = True
+    enable_parallel: bool = True
+    max_workers: int = 4
+    tiny_chunk_threshold: int = 50
+    # model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    model: str = "BAAI/bge-small-en-v1.5"
+
+    def __post_init__(self):
+        if self.max_size <= self.min_size:
+            raise ValueError("max_size must be greater than min_size")
 
 
-# --- Main Chunking Logic ---
+@dataclass
+class ChunkingStats:
+    """Processing statistics."""
+
+    total_chunks: int = 0
+    processing_time: float = 0.0
+    avg_chunk_size: float = 0.0
 
 
-class MarkdownHeaderChunker:
-    """
-    Chunks Markdown text using a multi-stage process to preserve semantic structure.
-    """
+class MarkdownChunker:
+    """Production Markdown document chunker."""
+
+    _embeddings_cache: Dict[str, Any] = {}
 
     def __init__(
         self,
         text: str,
-        config: Optional[MarkdownChunkerConfig] = None,
-        embeddings: Optional[Any] = None,
+        config: Optional[Config] = None,
+        title: Optional[str] = None,
     ):
-        self.text = text
-        self.config = config or MarkdownChunkerConfig()
-        # Use a standard LangChain embeddings model
-        self.embeddings = embeddings or HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        if not text or not text.strip():
+            raise ValueError("Text cannot be empty")
+
+        self.text = text.strip()
+        self.config = config or Config()
+        self.title = title or self._extract_title()
+        self.embeddings = (
+            self._get_embeddings() if self.config.enable_semantic else None
         )
 
-    async def chunk(self) -> List[Document]:
-        """Executes the full chunking pipeline."""
-        # Stage 1: Split by headers
-        header_split_chunks = self._split_by_headers(self.text)
+    def _get_embeddings(self) -> Any:
+        """Get cached embeddings model."""
+        model = self.config.model
+        if model not in self._embeddings_cache:
+            try:
+                self._embeddings_cache[model] = HuggingFaceEmbeddings(model_name=model)
+            except Exception as e:
+                raise ChunkingError(f"Failed to load embeddings: {e}")
+        return self._embeddings_cache[model]
 
-        # Stage 2: Split oversized chunks semantically
-        semantically_split_chunks = self._split_oversized_chunks(header_split_chunks)
+    def _extract_title(self) -> str:
+        """Extract title from first H1 header."""
+        for line in self.text.split("\n")[:10]:
+            match = re.match(r"^#\s+(.+)$", line.strip())
+            if match:
+                return match.group(1).strip()
+        return "Untitled"
 
-        # Stage 3: Combine undersized chunks
-        combined_chunks = self._combine_undersized_chunks(semantically_split_chunks)
+    def _extract_headers(self, text: str) -> Dict[str, str]:
+        """Extract current header context from text."""
+        headers = {}
+        current_headers = [None] * 7  # levels 0-6
 
-        # Stage 4: Finalize metadata with simplified context
-        final_chunks = self._finalize_chunk_metadata(combined_chunks)
+        for match in re.finditer(r"^(#{1,6})\s+(.+)$", text, re.MULTILINE):
+            level = len(match.group(1))
+            header = match.group(2).strip()
+            current_headers[level] = header
+            # Clear deeper levels
+            for i in range(level + 1, 7):
+                current_headers[i] = None
 
-        return final_chunks
+        for level in range(1, 7):
+            if current_headers[level]:
+                headers[f"Header {level}"] = current_headers[level]
 
-    def _split_by_headers(self, text: str, level: int = 1) -> List[Document]:
-        """Recursively splits text based on Markdown header levels."""
-        if level > self.config.max_header_level:
-            return [Document(page_content=text, metadata={})]
+        return headers
 
-        headers_to_split_on = [
-            (f"{{'#' * i}}", f"Header {i}") for i in range(1, level + 1)
-        ]
-        splitter = MarkdownHeaderTextSplitter(
-            headers_to_split_on=headers_to_split_on, strip_headers=False
-        )
+    async def chunk(self) -> Tuple[List[Document], ChunkingStats]:
+        """Execute chunking pipeline."""
+        start_time = time.time()
 
-        documents = []
-        for doc in splitter.split_text(text):
-            if len(doc.page_content) > self.config.max_chunk_size:
-                sub_chunks = self._split_by_headers(doc.page_content, level + 1)
-                for sub_chunk in sub_chunks:
-                    sub_chunk.metadata = {**doc.metadata, **sub_chunk.metadata}
-                    documents.append(sub_chunk)
-            else:
-                documents.append(doc)
-        return documents
-
-    def _split_oversized_chunks(self, chunks: List[Document]) -> List[Document]:
-        """Identifies and splits chunks that exceed the maximum size."""
-        processed_chunks = []
-        for chunk in chunks:
-            if len(chunk.page_content) > self.config.max_chunk_size:
-                split_chunks = self._split_semantically(chunk)
-                processed_chunks.extend(split_chunks)
-            else:
-                processed_chunks.append(chunk)
-        return processed_chunks
-
-    # --- CHANGE: Rewritten to use LangChain's SemanticChunker ---
-    def _split_semantically(self, chunk: Document) -> List[Document]:
-        """Performs semantic splitting on a single chunk using LangChain."""
         try:
-            # Initialize the SemanticChunker with our embedding model.
-            # "percentile" is a robust way to find topic shifts.
-            semantic_splitter = SemanticChunker(
+            # Step 1: Split by headers
+            chunks = await self._split_by_headers()
+
+            logger.info(f"Initial split by headers: {len(chunks)} chunks created.")
+
+            # Step 2: Split oversized chunks semantically (if enabled)
+            if self.config.enable_semantic:
+                chunks = await self._split_oversized_chunks(chunks)
+
+            logger.info(f"After semantic splitting: {len(chunks)} chunks created.")
+
+            # Step 3: Combine small adjacent chunks
+            chunks = self._combine_small_chunks(chunks)
+
+            logger.info(f"After combining small chunks: {len(chunks)} chunks created.")
+
+            # Step 4: Finalize metadata
+            chunks = self._add_final_metadata(chunks)
+
+            # Calculate stats
+            processing_time = time.time() - start_time
+            total_words = sum(len(c.page_content.split()) for c in chunks)
+            stats = ChunkingStats(
+                total_chunks=len(chunks),
+                processing_time=processing_time,
+                avg_chunk_size=total_words / len(chunks) if chunks else 0,
+            )
+
+            logger.info(
+                f"Chunking completed: {len(chunks)} chunks in {processing_time:.2f}s"
+            )
+            return chunks, stats
+
+        except Exception as e:
+            logger.error(f"Chunking failed: {e}")
+            raise ChunkingError(f"Pipeline failed: {e}")
+
+    async def _split_by_headers(self) -> List[Document]:
+        """Split text by markdown headers."""
+        headers_to_split = [
+            (f"{'#' * i}", f"Header {i}")
+            for i in range(1, self.config.max_header_level + 1)
+        ]
+
+        try:
+            splitter = MarkdownHeaderTextSplitter(
+                headers_to_split_on=headers_to_split, strip_headers=False
+            )
+            docs = splitter.split_text(self.text)
+
+            # Ensure all docs have metadata (don't filter here, let combine step handle tiny chunks)
+            for doc in docs:
+                if not doc.metadata:
+                    doc.metadata = self._extract_headers(doc.page_content)
+
+            return docs
+
+        except Exception as e:
+            logger.warning(f"Header splitting failed: {e}")
+            # Fallback to single document
+            return [
+                Document(
+                    page_content=self.text, metadata=self._extract_headers(self.text)
+                )
+            ]
+
+    async def _split_oversized_chunks(self, chunks: List[Document]) -> List[Document]:
+        """Split chunks that exceed max_size using semantic splitting."""
+        oversized = [c for c in chunks if len(c.page_content) > self.config.max_size]
+        normal = [c for c in chunks if len(c.page_content) <= self.config.max_size]
+
+        if not oversized:
+            return chunks
+
+        if self.config.enable_parallel and len(oversized) > 1:
+            # Process oversized chunks in parallel
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
+                tasks = [
+                    loop.run_in_executor(executor, self._semantic_split, chunk)
+                    for chunk in oversized
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Collect results
+            processed = normal.copy()
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.warning(f"Semantic split failed for chunk {i}: {result}")
+                    processed.append(oversized[i])
+                else:
+                    processed.extend(result)
+            return processed
+        else:
+            # Process sequentially
+            result = normal.copy()
+            for chunk in oversized:
+                result.extend(self._semantic_split(chunk))
+            return result
+
+    def _semantic_split(self, chunk: Document) -> List[Document]:
+        """Split a single chunk using semantic chunking."""
+        try:
+            if not self.embeddings:
+                return [chunk]
+
+            splitter = SemanticChunker(
                 self.embeddings, breakpoint_threshold_type="percentile"
             )
+            docs = splitter.create_documents([chunk.page_content])
 
-            # The splitter creates new Document objects with the original metadata
-            new_docs = semantic_splitter.create_documents(
-                [chunk.page_content], metadatas=[chunk.metadata]
-            )
+            # Preserve original metadata
+            for doc in docs:
+                doc.metadata.update(chunk.metadata)
+                doc.metadata["is_semantic_split"] = True
 
-            logging.info(f"Semantically split one chunk into {len(new_docs)}.")
-            return new_docs if new_docs else [chunk]
+            return docs if len(docs) > 1 else [chunk]
+
         except Exception as e:
-            logging.error(f"Semantic splitting failed: {e}. Returning original chunk.")
+            logger.warning(f"Semantic split failed: {e}")
             return [chunk]
 
-    def _combine_undersized_chunks(self, chunks: List[Document]) -> List[Document]:
-        """Merges adjacent chunks that are smaller than the minimum size."""
+    def _combine_small_chunks(self, chunks: List[Document]) -> List[Document]:
+        """
+        Combines adjacent small text chunks into larger ones.
+
+        This method has a special rule for "tiny" chunks (less than 20
+        characters): they are unconditionally merged with the following chunk,
+        ignoring other size constraints for that single merge.
+
+        For other chunks smaller than `self.config.min_size`, it merges them
+        with subsequent neighbors until the combined chunk's size is at least
+        `self.config.min_size` or until adding the next chunk would exceed
+        `self.config.max_size`.
+
+        Args:
+            chunks: A list of Document objects to process.
+
+        Returns:
+            A new list of Document objects with small chunks merged.
+        """
         if not chunks:
             return []
 
-        combined = []
-        buffer = chunks[0]
+        merged_chunks: List[Document] = []
+        chunk_index = 0
+        TINY_CHUNK_THRESHOLD = self.config.tiny_chunk_threshold
 
-        for next_chunk in chunks[1:]:
-            if (len(buffer.page_content) < self.config.min_chunk_size) and (
-                len(buffer.page_content) + len(next_chunk.page_content)
-                <= self.config.max_chunk_size
+        while chunk_index < len(chunks):
+            current_chunk = chunks[chunk_index]
+            current_chunk_size = len(current_chunk.page_content.split())
+
+            # If a chunk is tiny, unconditionally merge it with the next one.
+            if current_chunk_size < TINY_CHUNK_THRESHOLD and (chunk_index + 1) < len(
+                chunks
             ):
-                buffer.page_content += "\n\n" + next_chunk.page_content
-                buffer.metadata = self._get_common_metadata(
-                    buffer.metadata, next_chunk.metadata
-                )
-            else:
-                combined.append(buffer)
-                buffer = next_chunk
-        combined.append(buffer)
-        return combined
+                next_chunk = chunks[chunk_index + 1]
 
-    def _get_common_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
-        """Finds the common header hierarchy between two chunks."""
-        common_meta = {}
+                merged_content = "\n\n".join(
+                    [current_chunk.page_content, next_chunk.page_content]
+                )
+                merged_metadata = self._merge_metadata(
+                    current_chunk.metadata.copy(), next_chunk.metadata
+                )
+                merged_metadata["is_combined"] = True
+
+                new_chunk = Document(
+                    page_content=merged_content, metadata=merged_metadata
+                )
+                merged_chunks.append(new_chunk)
+
+                # Advance index past the two chunks we just merged
+                chunk_index += 2
+                continue
+
+            # If the current chunk is large enough, add it and move on.
+            if current_chunk_size >= self.config.min_size:
+                merged_chunks.append(current_chunk)
+                chunk_index += 1
+                continue
+
+            # Start combining other small chunks that are not "tiny".
+            content_parts = [current_chunk.page_content]
+            combined_metadata = current_chunk.metadata.copy()
+            combined_size = current_chunk_size
+
+            next_chunk_index = chunk_index + 1
+
+            while next_chunk_index < len(chunks):
+                next_chunk = chunks[next_chunk_index]
+
+                if combined_size + len(next_chunk.page_content) > self.config.max_size:
+                    break
+
+                content_parts.append(next_chunk.page_content)
+                combined_metadata = self._merge_metadata(
+                    combined_metadata, next_chunk.metadata
+                )
+                combined_size += len(next_chunk.page_content)
+                next_chunk_index += 1
+
+                if combined_size >= self.config.min_size:
+                    break
+
+            merged_content = "\n\n".join(content_parts)
+            new_chunk = Document(
+                page_content=merged_content, metadata=combined_metadata
+            )
+
+            if next_chunk_index > chunk_index + 1:
+                new_chunk.metadata["is_combined"] = True
+
+            merged_chunks.append(new_chunk)
+            chunk_index = next_chunk_index
+
+        return merged_chunks
+
+    def _merge_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
+        """Merge metadata from two chunks, keeping common headers."""
+        merged = {k: v for k, v in meta1.items() if not k.startswith("Header ")}
+
+        # Keep only headers that are the same in both chunks
         for key, value in meta1.items():
             if key.startswith("Header ") and meta2.get(key) == value:
-                common_meta[key] = value
-        return common_meta
+                merged[key] = value
 
-    def _finalize_chunk_metadata(self, chunks: List[Document]) -> List[Document]:
-        """Adds a simple, readable header context to each chunk's metadata."""
-        for chunk in chunks:
-            header_keys = [k for k in chunk.metadata.keys() if k.startswith("Header ")]
-            sorted_header_keys = sorted(header_keys, key=lambda k: int(k.split(" ")[1]))
-            header_trail = [chunk.metadata[key] for key in sorted_header_keys]
-            header_context = " ->> ".join(header_trail)
+        return merged
 
-            chunk.metadata = {
-                "header_context": header_context,
-                "header_trail": header_trail,
-                **chunk.metadata,
-            }
+    def _add_final_metadata(self, chunks: List[Document]) -> List[Document]:
+        """Add final metadata to all chunks."""
+        for i, chunk in enumerate(chunks):
+            # Get header hierarchy
+            header_keys = sorted(
+                [k for k in chunk.metadata.keys() if k.startswith("Header ")],
+                key=lambda k: int(k.split()[1]),
+            )
+            header_trail = [chunk.metadata[k] for k in header_keys]
+
+            # Update metadata
+            chunk.metadata.update(
+                {
+                    "chunk_index": i,
+                    "doc_title": self.title,
+                    "word_count": len(chunk.page_content.split()),
+                    "char_count": len(chunk.page_content),
+                    "primary_header": header_trail[-1] if header_trail else None,
+                    "header_level": len(header_trail),
+                    "section_path": " > ".join([self.title] + header_trail),
+                }
+            )
+
         return chunks
