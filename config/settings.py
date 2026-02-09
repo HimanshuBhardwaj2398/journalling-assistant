@@ -12,7 +12,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class DatabaseSettings(BaseSettings):
     """Database configuration settings."""
 
-    model_config = SettingsConfigDict(env_prefix="DB_")
+    model_config = SettingsConfigDict(
+        env_prefix="DB_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     url: str = Field(
         default="",
@@ -59,7 +64,12 @@ class DatabaseSettings(BaseSettings):
 class EmbeddingSettings(BaseSettings):
     """Embedding model configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="EMBEDDING_")
+    model_config = SettingsConfigDict(
+        env_prefix="EMBEDDING_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     voyage_api_key: Optional[str] = Field(
         default=None,
@@ -92,7 +102,12 @@ class EmbeddingSettings(BaseSettings):
 class ParsingSettings(BaseSettings):
     """Document parsing configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="PARSING_")
+    model_config = SettingsConfigDict(
+        env_prefix="PARSING_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     llamaparse_api_key: Optional[str] = Field(
         default=None,
@@ -117,7 +132,12 @@ class ParsingSettings(BaseSettings):
 class ChunkingSettings(BaseSettings):
     """Text chunking configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="CHUNKING_")
+    model_config = SettingsConfigDict(
+        env_prefix="CHUNKING_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     max_size: int = Field(default=2000, description="Maximum chunk size in characters")
     min_size: int = Field(default=700, description="Minimum chunk size in characters")

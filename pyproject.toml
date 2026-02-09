@@ -43,6 +43,9 @@ semantic-chunkers = ">=0.1.1,<0.2.0"
 ollama = ">=0.5.3,<0.6.0"
 openai = ">=1.106.1,<2.0.0"
 
+# UI and visualization
+streamlit = ">=1.30.0,<2.0.0"
+
 [tool.poetry.group.dev.dependencies]
 # Development tools
 ipykernel = "^6.30.1"
