@@ -115,10 +115,12 @@ class VectorStoreManager:
             DatabaseConnectionError: If connection to database fails.
         """
         try:
+            # Use correct API for langchain_community.vectorstores.pgvector.PGVector
+            # Note: First two args are positional: connection_string, embedding_function
             vector_store = PGVector(
-                embeddings=self.embeddings,
+                connection_string=self.config.db_url,
+                embedding_function=self.embeddings,
                 collection_name=self.config.collection_name,
-                connection=self.config.db_url,
                 use_jsonb=self.config.use_jsonb,
             )
 

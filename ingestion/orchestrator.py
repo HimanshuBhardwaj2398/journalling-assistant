@@ -110,23 +110,19 @@ class PipelineOrchestrator:
         Returns:
             List of stages in dependency order
         """
-        in_degree = {stage.name: 0 for stage in self._stages}
+        # Calculate in-degrees: count how many dependencies each stage has
+        in_degree = {stage.name: len(stage.required_stages) for stage in self._stages}
 
-        # Calculate in-degrees
-        for stage in self._stages:
-            for dependency in stage.required_stages:
-                if dependency in in_degree:
-                    in_degree[dependency] += 1
-
-        # Find stages with no dependencies
+        # Find stages with no dependencies (in_degree = 0)
         queue = [stage for stage in self._stages if in_degree[stage.name] == 0]
         result = []
 
         while queue:
+            # Take stage with no remaining dependencies
             stage = queue.pop(0)
             result.append(stage)
 
-            # Reduce in-degree for dependent stages
+            # Reduce in-degree for stages that depend on this one
             for other_stage in self._stages:
                 if stage.name in other_stage.required_stages:
                     in_degree[other_stage.name] -= 1
@@ -361,7 +357,7 @@ if __name__ == "__main__":
     orchestrator = IngestionOrchestrator(
         vector_store_config=VectorStoreConfig(
             collection_name="documents",
-            connection_string=os.getenv("DATABASE_URL"),
+            db_url=os.getenv("DATABASE_URL"),
         )
     )
 

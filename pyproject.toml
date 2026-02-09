@@ -17,7 +17,7 @@ pydantic-settings = ">=2.0.0,<3.0.0"
 
 # Core dependencies
 sqlalchemy = ">=2.0.43,<3.0.0"
-psycopg2 = ">=2.9.10,<3.0.0"
+psycopg2-binary = ">=2.9.10,<3.0.0"  # Using binary version for easier installation
 pgvector = ">=0.3.0,<0.4.0"
 python-dotenv = ">=1.0.0,<2.0.0"
 
