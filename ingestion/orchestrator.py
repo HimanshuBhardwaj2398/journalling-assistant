@@ -253,7 +253,7 @@ class IngestionOrchestrator:
                     raise DocumentNotFoundError(f"Document {source} not found")
                 source = doc.file_path
                 title = doc.title
-                document_id = source
+                document_id = doc.id
                 logger.info(f"Resuming document {document_id}: {title}")
         else:
             # Create new document
