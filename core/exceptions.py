@@ -106,6 +106,17 @@ class DocumentNotFoundError(DatabaseError):
     pass
 
 
+class DuplicateDocumentError(DatabaseError):
+    """
+    Raised when attempting to ingest a document that already exists.
+
+    Examples:
+        - URL already ingested
+        - PDF file path already exists in database
+    """
+    pass
+
+
 class SchemaValidationError(DatabaseError):
     """
     Raised when database schema validation fails.

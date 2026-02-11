@@ -194,6 +194,51 @@ class DocumentCRUD:
         """
         return self.get_documents_by_status(schema.DocumentStatus.FAILED)
 
+    def get_document_by_file_path(self, file_path: str) -> Optional[schema.Document]:
+        """
+        Get a document by its file path or URL.
+
+        Args:
+            file_path: Source file path or URL
+
+        Returns:
+            Document instance or None if not found
+        """
+        return (
+            self.db.query(schema.Document)
+            .filter(schema.Document.file_path == file_path)
+            .first()
+        )
+
+    def check_duplicate(self, file_path: str) -> Optional[schema.Document]:
+        """
+        Check if a document with the same source already exists.
+
+        Args:
+            file_path: Source file path or URL to check
+
+        Returns:
+            Existing document if found, None otherwise
+        """
+        return self.get_document_by_file_path(file_path)
+
+    def delete_document(self, document_id: int) -> bool:
+        """
+        Delete a document and all its associated chunks.
+
+        Args:
+            document_id: ID of document to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        doc = self.get_document_by_id(document_id)
+        if doc:
+            self.db.delete(doc)
+            self.db.commit()
+            return True
+        return False
+
 
 class ChunkCRUD:
     """CRUD operations for Chunk model."""
@@ -277,3 +322,21 @@ class ChunkCRUD:
             .filter(schema.Chunk.uuid == uuid)
             .first()
         )
+
+    def delete_chunks_by_document(self, document_id: int) -> int:
+        """
+        Delete all chunks for a document.
+
+        Args:
+            document_id: Parent document ID
+
+        Returns:
+            Number of chunks deleted
+        """
+        deleted = (
+            self.db.query(schema.Chunk)
+            .filter(schema.Chunk.document_id == document_id)
+            .delete()
+        )
+        self.db.commit()
+        return deleted

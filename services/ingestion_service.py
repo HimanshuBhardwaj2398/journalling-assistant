@@ -1,0 +1,129 @@
+"""
+Ingestion service - business logic for document processing.
+
+Handles document ingestion, processing, and orchestration.
+"""
+
+import asyncio
+import os
+
+from db.database import session_scope
+from db.crud import DocumentCRUD
+from db.schema import DocumentStatus
+from ingestion.orchestrator import IngestionOrchestrator
+from ingestion.embed import VectorStoreConfig
+from core.exceptions import DuplicateDocumentError
+
+
+def get_orchestrator() -> IngestionOrchestrator:
+    """Initialize ingestion orchestrator with vector store config."""
+    db_url = os.getenv("DB_URL") or os.getenv("DATABASE_URL")
+    return IngestionOrchestrator(
+        vector_store_config=VectorStoreConfig(
+            collection_name="meditation_chunks",
+            db_url=db_url,
+        )
+    )
+
+
+async def ingest_document_async(
+    source: str,
+    title: str,
+    description: str,
+    doc_type: str,
+    category: str,
+    tags: list,
+) -> dict:
+    """
+    Ingest document with metadata.
+
+    Args:
+        source: URL or file path to the document
+        title: Document title
+        description: Document description
+        doc_type: Type of document (e.g., ancient_text, lecture)
+        category: Primary category (e.g., buddhism)
+        tags: List of tags for searchability
+
+    Returns:
+        dict: Result from orchestrator with success status and chunk count
+
+    Raises:
+        DuplicateDocumentError: If document with same source already exists
+    """
+    # Check for duplicates first
+    with session_scope() as session:
+        crud = DocumentCRUD(session)
+        existing_doc = crud.check_duplicate(source)
+        if existing_doc:
+            raise DuplicateDocumentError(
+                f"Document with source '{source}' already exists "
+                f"(ID: {existing_doc.id}, Title: '{existing_doc.title}', "
+                f"Status: {existing_doc.status.value})"
+            )
+
+    orchestrator = get_orchestrator()
+
+    # Build metadata
+    metadata = {}
+    if doc_type:
+        metadata["type"] = doc_type
+    if category:
+        metadata["category"] = category
+
+    # Combine tags
+    all_tags = tags.copy() if tags else []
+    if doc_type:
+        all_tags.append(f"type:{doc_type}")
+    if category:
+        all_tags.append(f"category:{category}")
+
+    # Create document first with metadata
+    with session_scope() as session:
+        doc = DocumentCRUD(session).create_document(
+            title=title,
+            file_path=source,
+            description=description,
+            doc_metadata=metadata,
+            tags=all_tags,
+            status=DocumentStatus.PENDING,
+        )
+        doc_id = doc.id
+
+    # Process through pipeline
+    result = await orchestrator.process(source=doc_id, title=title)
+    return result
+
+
+def ingest_document(
+    source: str,
+    title: str,
+    description: str,
+    doc_type: str,
+    category: str,
+    tags: list,
+) -> dict:
+    """Synchronous wrapper for async ingestion."""
+    return asyncio.run(
+        ingest_document_async(source, title, description, doc_type, category, tags)
+    )
+
+
+async def process_document_by_id_async(doc_id: int) -> dict:
+    """
+    Process/resume a document by its ID.
+
+    Args:
+        doc_id: Database ID of the document to process
+
+    Returns:
+        dict: Result from orchestrator
+    """
+    orchestrator = get_orchestrator()
+    result = await orchestrator.process(source=doc_id)
+    return result
+
+
+def process_document_by_id(doc_id: int) -> dict:
+    """Synchronous wrapper for async document processing."""
+    return asyncio.run(process_document_by_id_async(doc_id))
