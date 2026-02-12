@@ -43,6 +43,17 @@ Source Documents (PDF/URL)
 ## Project Structure
 
 ```
+├── app.py                   # Streamlit web interface entry point
+│
+├── views/                   # Streamlit page components
+│   ├── ingest.py            # Document ingestion UI
+│   ├── queue.py             # Processing queue monitor
+│   ├── browse.py            # Database browser
+│   └── stats.py             # Analytics dashboard
+│
+├── services/                # Business logic layer
+│   └── ingestion_service.py # Ingestion orchestration service
+│
 ├── db/                      # Database layer
 │   ├── database.py          # Connection & session management
 │   ├── schema.py            # SQLAlchemy ORM models
@@ -54,6 +65,12 @@ Source Documents (PDF/URL)
 │   ├── embed.py             # Vector embedding & storage
 │   └── orchestrator.py      # Pipeline orchestration
 │
+├── core/                    # Core utilities
+│   └── exceptions.py        # Custom exception hierarchy
+│
+├── config/                  # Configuration management
+│   └── settings.py          # Pydantic settings models
+│
 ├── experiments/             # Jupyter notebooks for R&D
 │
 ├── Books/                   # Source texts (Pali Canon)
@@ -62,7 +79,10 @@ Source Documents (PDF/URL)
 │   ├── Linked Discourses/   # Saṃyutta Nikāya
 │   └── Numbered Discourses/ # Aṅguttara Nikāya
 │
-└── config.py                # Environment configuration
+└── docs/                    # Documentation
+    ├── CHANGELOG.md         # Version history
+    ├── ROADMAP.md           # Future plans
+    └── deployment/          # Deployment guides
 ```
 
 ## Tech Stack
@@ -71,6 +91,7 @@ Source Documents (PDF/URL)
 |-----------|------------|
 | **Database** | PostgreSQL + pgvector |
 | **ORM** | SQLAlchemy 2.0 |
+| **Web Interface** | Streamlit |
 | **Embeddings** | Voyage AI (`voyage-3.5`) |
 | **PDF Parsing** | LlamaParse |
 | **Chunking** | Custom semantic chunker + BAAI/bge-small-en-v1.5 |
@@ -116,7 +137,43 @@ Source Documents (PDF/URL)
 
 ## Usage
 
-### Ingesting Documents
+### Web Interface (Streamlit)
+
+The easiest way to interact with the database is through the Streamlit web interface:
+
+```bash
+streamlit run app.py
+```
+
+The interface provides four main views:
+
+1. **Ingest New Document**: Upload PDFs or provide URLs to add new texts
+   - Drag-and-drop file upload
+   - URL ingestion support
+   - Configure document metadata (title, tags)
+   - Real-time processing status
+
+2. **Processing Queue**: Monitor document processing pipeline
+   - View all documents and their current status
+   - Track progress through the ingestion stages
+   - Retry failed ingestions
+   - Delete documents from the queue
+
+3. **Browse Database**: Explore successfully ingested content
+   - Search and filter documents by title or tags
+   - View chunk counts and metadata
+   - Preview document content
+   - Export data
+
+4. **Statistics**: Database analytics and insights
+   - Total documents and chunks
+   - Processing success/failure rates
+   - Storage metrics
+   - Tag distribution
+
+![Streamlit Interface](docs/images/streamlit-ui.png)
+
+### Programmatic Access
 
 The `IngestionOrchestrator` handles the complete pipeline:
 
