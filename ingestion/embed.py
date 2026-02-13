@@ -7,7 +7,7 @@ and managing the connection to PostgreSQL with pgvector extension.
 
 import os
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from dataclasses import dataclass
 from contextlib import contextmanager
 
@@ -219,3 +219,64 @@ class VectorStoreManager:
             "batch_size": self.config.batch_size,
             "use_jsonb": self.config.use_jsonb,
         }
+
+    def delete_by_ids(self, ids: List[str]) -> int:
+        """
+        Delete embeddings by their UUIDs.
+
+        Args:
+            ids: List of embedding UUIDs to delete.
+
+        Returns:
+            Number of embeddings deleted (based on input count).
+
+        Raises:
+            VectorStoreError: If deletion fails.
+        """
+        if not ids:
+            logger.warning("No IDs provided for deletion")
+            return 0
+
+        try:
+            logger.info(f"Deleting {len(ids)} embeddings from vector store")
+            self.vector_store.delete(ids=ids)
+            logger.info(f"Successfully deleted {len(ids)} embeddings")
+            return len(ids)
+
+        except Exception as e:
+            error_msg = f"Failed to delete embeddings: {e}"
+            logger.error(error_msg)
+            raise VectorStoreError(error_msg) from e
+
+    def delete_by_metadata_filter(
+        self, filter: Dict[str, Any]
+    ) -> bool:
+        """
+        Delete embeddings matching a metadata filter.
+
+        Uses LangChain PGVector's filter support for metadata-based deletion.
+        Useful for deleting all embeddings for a specific document.
+
+        Args:
+            filter: Metadata filter dict (e.g., {"original_doc_id": 123})
+
+        Returns:
+            True if deletion completed successfully.
+
+        Raises:
+            VectorStoreError: If deletion fails.
+        """
+        if not filter:
+            logger.warning("No filter provided for deletion")
+            return False
+
+        try:
+            logger.info(f"Deleting embeddings with filter: {filter}")
+            self.vector_store.delete(filter=filter)
+            logger.info("Successfully deleted embeddings by filter")
+            return True
+
+        except Exception as e:
+            error_msg = f"Failed to delete embeddings by filter: {e}"
+            logger.error(error_msg)
+            raise VectorStoreError(error_msg) from e

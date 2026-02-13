@@ -61,6 +61,9 @@ class ParsingStage(PipelineStage):
         Raises:
             ParsingError: If parsing fails
         """
+        from db.database import session_scope
+        from db.crud import DocumentCRUD
+
         if not context.source:
             raise ParsingError("No source provided in context")
 
@@ -71,6 +74,15 @@ class ParsingStage(PipelineStage):
             result = self.parser_factory.parse(context.source)
 
             logger.info(f"Successfully parsed: {context.source} (title: {result.title})")
+
+            # Persist markdown to database
+            if context.document_id:
+                with session_scope() as session:
+                    DocumentCRUD(session).update_markdown(
+                        document_id=context.document_id,
+                        markdown=result.content,
+                    )
+                logger.info(f"Saved markdown to database for document {context.document_id}")
 
             # Update context with parsed results
             return context.with_update(
@@ -262,6 +274,65 @@ class DatabasePersistenceStage(PipelineStage):
     def required_stages(self) -> List[str]:
         return ["embedding"]
 
+    def _build_table_of_contents(self, chunks: List) -> dict:
+        """
+        Build table of contents with both structured entries and text representation.
+
+        Args:
+            chunks: List of LangChain Documents with header metadata
+
+        Returns:
+            Dict with 'entries' (structured list) and 'text' (indented string)
+        """
+        entries = []
+        header_stack = []  # [(level, text, id), ...]
+        seen_headers = set()
+        entry_count = 0
+
+        for idx, chunk in enumerate(chunks):
+            metadata = chunk.metadata or {}
+
+            for level in range(1, 7):
+                header_text = metadata.get(f"Header {level}")
+                if not header_text:
+                    continue
+
+                # Skip duplicates
+                header_key = (level, header_text)
+                if header_key in seen_headers:
+                    continue
+                seen_headers.add(header_key)
+
+                # Pop stack until we find parent level
+                while header_stack and header_stack[-1][0] >= level:
+                    header_stack.pop()
+
+                entry_id = f"h{level}_{entry_count}"
+                parent_id = header_stack[-1][2] if header_stack else None
+
+                entries.append({
+                    "id": entry_id,
+                    "level": level,
+                    "text": header_text,
+                    "parent_id": parent_id,
+                    "chunk_index": idx,
+                })
+
+                header_stack.append((level, header_text, entry_id))
+                entry_count += 1
+
+        # Build indented text representation
+        text_lines = []
+        for entry in entries:
+            indent = "  " * (entry["level"] - 1)
+            text_lines.append(f"{indent}{entry['text']}")
+
+        logger.debug(f"Built TOC with {len(entries)} entries")
+        return {
+            "entries": entries,
+            "text": "\n".join(text_lines),
+        }
+
     async def execute(self, context: PipelineContext) -> PipelineContext:
         """
         Save document and chunk metadata to database.
@@ -319,6 +390,16 @@ class DatabasePersistenceStage(PipelineStage):
                 )
 
                 logger.info(f"✓ Saved {len(created_chunks)} chunks to database")
+
+                # Build and save table of contents from chunk headers
+                toc = self._build_table_of_contents(context.chunks)
+                if toc["entries"]:
+                    doc_crud.update_doc_metadata(
+                        document_id=context.document_id,
+                        metadata_updates={"table_of_contents": toc},
+                        merge=True,
+                    )
+                    logger.info(f"✓ Saved table of contents with {len(toc['entries'])} entries")
 
                 # Update document status to COMPLETED
                 doc_crud.update_status(

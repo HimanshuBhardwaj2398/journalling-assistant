@@ -137,6 +137,33 @@ class DocumentCRUD:
             self.db.refresh(doc)
         return doc
 
+    def update_doc_metadata(
+        self,
+        document_id: int,
+        metadata_updates: Dict[str, Any],
+        merge: bool = True,
+    ) -> Optional[schema.Document]:
+        """
+        Update document metadata.
+
+        Args:
+            document_id: ID of document
+            metadata_updates: Dictionary of metadata to add/update
+            merge: If True, merge with existing metadata. If False, replace.
+
+        Returns:
+            Updated document or None if not found
+        """
+        doc = self.get_document_by_id(document_id)
+        if doc:
+            if merge and doc.doc_metadata:
+                doc.doc_metadata = {**doc.doc_metadata, **metadata_updates}
+            else:
+                doc.doc_metadata = metadata_updates
+            self.db.commit()
+            self.db.refresh(doc)
+        return doc
+
     def store_chunks(
         self,
         document_id: int,

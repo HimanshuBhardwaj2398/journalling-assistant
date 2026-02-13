@@ -19,14 +19,23 @@ settings = get_settings()
 # Configure engine based on environment
 if settings.database.is_supabase:
     # Supabase-optimized configuration
+    # Critical: Add connection timeouts and keepalives for reliable connections
     engine = create_engine(
         settings.database.url,
         pool_size=settings.database.pool_size,
         max_overflow=settings.database.max_overflow,
         pool_timeout=settings.database.pool_timeout,
-        pool_recycle=settings.database.pool_recycle,
+        pool_recycle=300,  # Recycle connections every 5 min (Supabase may kill them sooner)
         pool_pre_ping=True,  # Verify connections before use
         echo=settings.database.echo,
+        connect_args={
+            "connect_timeout": 10,  # Fail fast if connection takes >10s
+            "keepalives": 1,  # Enable TCP keepalives
+            "keepalives_idle": 30,  # Start keepalives after 30s idle
+            "keepalives_interval": 10,  # Send keepalive every 10s
+            "keepalives_count": 5,  # Give up after 5 failed keepalives
+            "sslmode": "require",  # Supabase requires SSL
+        },
     )
     logger.info("Initialized Supabase database connection with pooling")
 else:

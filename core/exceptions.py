@@ -127,3 +127,31 @@ class SchemaValidationError(DatabaseError):
         - Failed schema migration
     """
     pass
+
+
+# ============================================================================
+# COLLECTION ERRORS
+# ============================================================================
+
+class CollectionError(MeditationDBError):
+    """
+    Raised when collection management operations fail.
+
+    Examples:
+        - Failed to delete embeddings from vector store
+        - Collection not found
+        - Operation failed on both databases
+    """
+    pass
+
+
+class EmbeddingSyncError(CollectionError):
+    """
+    Raised when app DB and vector store are out of sync.
+
+    Examples:
+        - Orphaned embeddings in vector store
+        - Missing embeddings for chunks in app DB
+        - UUID mismatch between databases
+    """
+    pass

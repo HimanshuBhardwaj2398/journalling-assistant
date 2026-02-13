@@ -9,6 +9,7 @@ import streamlit as st
 from db.database import session_scope
 from db.crud import DocumentCRUD
 from db.schema import DocumentStatus
+from services.collection_service import CollectionService
 
 
 def render():
@@ -90,37 +91,90 @@ def _render_document_card(doc, session):
                 if len(doc.document_chunks) > 3:
                     st.caption(f"... and {len(doc.document_chunks) - 3} more chunks")
 
-        # Delete section
+        # Actions section
         st.markdown("---")
-        _render_delete_controls(doc)
+        _render_action_controls(doc)
 
 
-def _render_delete_controls(doc):
-    """Render delete confirmation controls for a document."""
-    delete_col1, delete_col2 = st.columns([1, 3])
+def _render_action_controls(doc):
+    """Render action buttons (reprocess, delete) for a document."""
+    # Check which action is pending confirmation
+    pending_action = st.session_state.get("pending_action")
+    pending_doc_id = st.session_state.get("pending_doc_id")
 
-    with delete_col1:
-        if st.session_state.get("delete_confirm") == doc.id:
-            # Show confirmation buttons
+    # Show action buttons or confirmation
+    btn_col1, btn_col2, msg_col = st.columns([1, 1, 2])
+
+    with btn_col1:
+        if pending_doc_id == doc.id and pending_action == "reprocess":
+            # Show reprocess confirmation
+            confirm_col, cancel_col = st.columns(2)
+            with confirm_col:
+                if st.button("Yes", key=f"confirm_reprocess_{doc.id}", type="primary"):
+                    with st.spinner("Reprocessing..."):
+                        service = CollectionService()
+                        result = service.reprocess_document_sync(doc.id)
+
+                    st.session_state.pending_action = None
+                    st.session_state.pending_doc_id = None
+                    if result.success:
+                        st.success(
+                            f"Reprocessed: {result.old_chunks_deleted} old chunks removed, "
+                            f"{result.new_chunks_created} new chunks created"
+                        )
+                    else:
+                        st.error(f"Reprocess failed: {result.error}")
+                    st.rerun()
+            with cancel_col:
+                if st.button("No", key=f"cancel_reprocess_{doc.id}"):
+                    st.session_state.pending_action = None
+                    st.session_state.pending_doc_id = None
+                    st.rerun()
+        else:
+            if st.button("Reprocess", key=f"reprocess_{doc.id}"):
+                st.session_state.pending_action = "reprocess"
+                st.session_state.pending_doc_id = doc.id
+                st.rerun()
+
+    with btn_col2:
+        if pending_doc_id == doc.id and pending_action == "delete":
+            # Show delete confirmation
             confirm_col, cancel_col = st.columns(2)
             with confirm_col:
                 if st.button("Yes", key=f"confirm_del_{doc.id}", type="primary"):
-                    with session_scope() as del_session:
-                        del_crud = DocumentCRUD(del_session)
-                        chunk_count = len(doc.document_chunks)
-                        if del_crud.delete_document(doc.id):
-                            st.session_state.delete_confirm = None
-                            st.success(f"Deleted document and {chunk_count} chunks")
-                            st.rerun()
+                    service = CollectionService()
+                    result = service.delete_document_complete_sync(doc.id)
+
+                    st.session_state.pending_action = None
+                    st.session_state.pending_doc_id = None
+                    if result.success:
+                        st.success(
+                            f"Deleted: {result.chunks_deleted} chunks, "
+                            f"{result.embeddings_deleted} embeddings"
+                        )
+                    else:
+                        st.error(f"Delete failed: {result.error}")
+                    st.rerun()
             with cancel_col:
                 if st.button("No", key=f"cancel_del_{doc.id}"):
-                    st.session_state.delete_confirm = None
+                    st.session_state.pending_action = None
+                    st.session_state.pending_doc_id = None
                     st.rerun()
         else:
             if st.button("Delete", key=f"delete_{doc.id}", type="secondary"):
-                st.session_state.delete_confirm = doc.id
+                st.session_state.pending_action = "delete"
+                st.session_state.pending_doc_id = doc.id
                 st.rerun()
 
-    with delete_col2:
-        if st.session_state.get("delete_confirm") == doc.id:
-            st.warning(f"Delete '{doc.title}' and all {len(doc.document_chunks)} chunks?")
+    with msg_col:
+        if pending_doc_id == doc.id:
+            if pending_action == "reprocess":
+                st.warning(
+                    f"Reprocess '{doc.title}'? This will delete {len(doc.document_chunks)} "
+                    f"existing chunks and re-chunk/re-embed the document."
+                )
+            elif pending_action == "delete":
+                st.warning(
+                    f"Delete '{doc.title}', {len(doc.document_chunks)} chunks, "
+                    f"and all embeddings?"
+                )

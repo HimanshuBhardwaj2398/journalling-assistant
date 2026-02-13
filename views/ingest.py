@@ -4,6 +4,9 @@ Ingest New Document page.
 Provides UI for adding new meditation texts to the database.
 """
 
+import tempfile
+from pathlib import Path
+
 import streamlit as st
 
 from core.exceptions import DuplicateDocumentError
@@ -18,7 +21,10 @@ def render():
     st.markdown("Add a new meditation text to the database from a URL or PDF file.")
 
     # Source input
-    source_type = st.radio("Source Type", ["URL", "File Path"], horizontal=True)
+    source_type = st.radio("Source Type", ["URL", "Upload File"], horizontal=True)
+
+    source = None
+    uploaded_file = None
 
     if source_type == "URL":
         source = st.text_input(
@@ -27,10 +33,10 @@ def render():
             help="Enter the full URL of the web page to ingest",
         )
     else:
-        source = st.text_input(
-            "File Path",
-            placeholder="Books/my_document.pdf",
-            help="Enter the path to a PDF file relative to project root",
+        uploaded_file = st.file_uploader(
+            "Upload PDF",
+            type=["pdf"],
+            help="Select a PDF file to ingest",
         )
 
     # Metadata form
@@ -74,12 +80,34 @@ def render():
 
     # Collection selection
     st.markdown("---")
-    st.subheader("Collection")
+    col_header, col_refresh = st.columns([3, 1])
+    with col_header:
+        st.subheader("Collection")
+    with col_refresh:
+        if st.button("🔄 Refresh", key="refresh_collections"):
+            st.session_state.pop("collections_cache", None)
+            st.session_state.pop("collections_error", None)
+            st.rerun()
+
     st.markdown("Choose which collection to store embeddings in.")
 
-    # Fetch existing collections
-    with session_scope() as session:
-        existing_collections = get_all_collections(session)
+    # Fetch existing collections (cached to avoid repeated DB calls on every render)
+    # Only cache successful fetches - failed fetches can be retried with refresh button
+    if "collections_cache" not in st.session_state:
+        try:
+            with session_scope() as session:
+                st.session_state.collections_cache = get_all_collections(session)
+                st.session_state.pop("collections_error", None)  # Clear any previous error
+        except Exception as e:
+            st.session_state.collections_error = str(e)
+            st.session_state.collections_cache = None  # Don't cache empty on failure
+
+    # Show error if fetch failed
+    if st.session_state.get("collections_error"):
+        st.error(f"Failed to load collections: {st.session_state.collections_error}")
+        st.info("Click 'Refresh' to retry, or create a new collection below.")
+
+    existing_collections = st.session_state.get("collections_cache") or []
 
     # Add "Create New" option
     collection_options = existing_collections + ["+ Create New Collection"]
@@ -106,8 +134,11 @@ def render():
     st.markdown("---")
 
     if st.button("Start Ingestion", type="primary", use_container_width=True):
-        if not source:
-            st.error("Please provide a source URL or file path")
+        # Validate inputs
+        if source_type == "URL" and not source:
+            st.error("Please provide a source URL")
+        elif source_type == "Upload File" and not uploaded_file:
+            st.error("Please upload a PDF file")
         elif not title:
             st.error("Please provide a title")
         elif not collection_name:
@@ -115,6 +146,13 @@ def render():
         else:
             with st.spinner("Processing document... This may take a few minutes."):
                 try:
+                    # Handle uploaded file by saving to temp location
+                    if uploaded_file is not None:
+                        suffix = Path(uploaded_file.name).suffix
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                            tmp.write(uploaded_file.getbuffer())
+                            source = tmp.name
+
                     result = ingest_document(
                         source=source,
                         title=title,
@@ -125,6 +163,8 @@ def render():
                         collection_name=collection_name,
                     )
                     st.session_state.ingestion_result = result
+                    # Clear collections cache so new collection appears
+                    st.session_state.pop("collections_cache", None)
                 except DuplicateDocumentError as e:
                     st.error("Duplicate Document Detected")
                     st.warning(str(e))
