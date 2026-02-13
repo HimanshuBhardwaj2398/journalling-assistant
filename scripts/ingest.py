@@ -158,7 +158,8 @@ async def ingest_document(
 async def ingest_batch(
     sources: List[str],
     titles: Optional[List[str]] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    collection_name: str = "meditation_chunks",
 ) -> List[dict]:
     """
     Ingest multiple documents.
@@ -167,6 +168,7 @@ async def ingest_batch(
         sources: List of URLs, file paths, or document IDs
         titles: Optional list of custom titles (must match sources length)
         verbose: Print detailed progress
+        collection_name: Name of the collection to store embeddings in
 
     Returns:
         List of result dictionaries
@@ -175,7 +177,7 @@ async def ingest_batch(
 
     orchestrator = IngestionOrchestrator(
         vector_store_config=VectorStoreConfig(
-            collection_name="meditation_chunks",
+            collection_name=collection_name,
             db_url=db_url,
         )
     )
@@ -305,6 +307,12 @@ def main():
         help="Enable verbose logging"
     )
 
+    parser.add_argument(
+        "--collection", "-c",
+        default="meditation_chunks",
+        help="Collection name for storing embeddings (default: meditation_chunks)"
+    )
+
     args = parser.parse_args()
 
     # Setup logging level
@@ -321,7 +329,12 @@ def main():
     # Resume document
     if args.resume:
         result = asyncio.run(
-            ingest_batch([str(args.resume)], titles=[args.title], verbose=not args.quiet)
+            ingest_batch(
+                [str(args.resume)],
+                titles=[args.title],
+                verbose=not args.quiet,
+                collection_name=args.collection,
+            )
         )
         sys.exit(0 if result[0]["success"] else 1)
 
@@ -334,7 +347,12 @@ def main():
     # Ingest documents
     try:
         results = asyncio.run(
-            ingest_batch(args.sources, titles=[args.title] if args.title else None, verbose=not args.quiet)
+            ingest_batch(
+                args.sources,
+                titles=[args.title] if args.title else None,
+                verbose=not args.quiet,
+                collection_name=args.collection,
+            )
         )
 
         # Print summary if multiple documents

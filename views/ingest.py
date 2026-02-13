@@ -8,6 +8,8 @@ import streamlit as st
 
 from core.exceptions import DuplicateDocumentError
 from services.ingestion_service import ingest_document
+from db.database import session_scope
+from db.crud import get_all_collections
 
 
 def render():
@@ -70,6 +72,36 @@ def render():
     # Parse tags
     tags = [t.strip() for t in tags_input.split(",")] if tags_input else []
 
+    # Collection selection
+    st.markdown("---")
+    st.subheader("Collection")
+    st.markdown("Choose which collection to store embeddings in.")
+
+    # Fetch existing collections
+    with session_scope() as session:
+        existing_collections = get_all_collections(session)
+
+    # Add "Create New" option
+    collection_options = existing_collections + ["+ Create New Collection"]
+
+    selected_option = st.selectbox(
+        "Select Collection",
+        collection_options,
+        index=0 if existing_collections else len(collection_options) - 1,
+        help="Choose an existing collection or create a new one",
+    )
+
+    # Show text input if creating new collection
+    if selected_option == "+ Create New Collection":
+        new_collection_name = st.text_input(
+            "New Collection Name",
+            placeholder="e.g., Buddhist Discourses, Research Papers",
+            help="Enter a name for the new collection (no spaces recommended)",
+        )
+        collection_name = new_collection_name.strip() if new_collection_name else ""
+    else:
+        collection_name = selected_option
+
     # Ingest button
     st.markdown("---")
 
@@ -78,6 +110,8 @@ def render():
             st.error("Please provide a source URL or file path")
         elif not title:
             st.error("Please provide a title")
+        elif not collection_name:
+            st.error("Please select or create a collection")
         else:
             with st.spinner("Processing document... This may take a few minutes."):
                 try:
@@ -88,6 +122,7 @@ def render():
                         doc_type=doc_type,
                         category=category,
                         tags=tags,
+                        collection_name=collection_name,
                     )
                     st.session_state.ingestion_result = result
                 except DuplicateDocumentError as e:

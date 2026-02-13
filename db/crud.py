@@ -1,6 +1,23 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from . import schema
+
+
+def get_all_collections(session: Session) -> List[str]:
+    """
+    Fetch all collection names from langchain_pg_collection table.
+
+    Args:
+        session: Database session
+
+    Returns:
+        List of collection names sorted alphabetically
+    """
+    result = session.execute(
+        text("SELECT name FROM langchain_pg_collection ORDER BY name")
+    )
+    return [row[0] for row in result.fetchall()]
 
 
 class DocumentCRUD:

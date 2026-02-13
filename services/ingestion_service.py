@@ -15,12 +15,19 @@ from ingestion.embed import VectorStoreConfig
 from core.exceptions import DuplicateDocumentError
 
 
-def get_orchestrator() -> IngestionOrchestrator:
-    """Initialize ingestion orchestrator with vector store config."""
+def get_orchestrator(collection_name: str = "meditation_chunks") -> IngestionOrchestrator:
+    """Initialize ingestion orchestrator with vector store config.
+
+    Args:
+        collection_name: Name of the collection to store embeddings in
+
+    Returns:
+        Configured IngestionOrchestrator instance
+    """
     db_url = os.getenv("DB_URL") or os.getenv("DATABASE_URL")
     return IngestionOrchestrator(
         vector_store_config=VectorStoreConfig(
-            collection_name="meditation_chunks",
+            collection_name=collection_name,
             db_url=db_url,
         )
     )
@@ -33,6 +40,7 @@ async def ingest_document_async(
     doc_type: str,
     category: str,
     tags: list,
+    collection_name: str = "meditation_chunks",
 ) -> dict:
     """
     Ingest document with metadata.
@@ -44,6 +52,7 @@ async def ingest_document_async(
         doc_type: Type of document (e.g., ancient_text, lecture)
         category: Primary category (e.g., buddhism)
         tags: List of tags for searchability
+        collection_name: Name of the vector store collection
 
     Returns:
         dict: Result from orchestrator with success status and chunk count
@@ -62,7 +71,7 @@ async def ingest_document_async(
                 f"Status: {existing_doc.status.value})"
             )
 
-    orchestrator = get_orchestrator()
+    orchestrator = get_orchestrator(collection_name)
 
     # Build metadata
     metadata = {}
@@ -102,28 +111,38 @@ def ingest_document(
     doc_type: str,
     category: str,
     tags: list,
+    collection_name: str = "meditation_chunks",
 ) -> dict:
     """Synchronous wrapper for async ingestion."""
     return asyncio.run(
-        ingest_document_async(source, title, description, doc_type, category, tags)
+        ingest_document_async(
+            source, title, description, doc_type, category, tags, collection_name
+        )
     )
 
 
-async def process_document_by_id_async(doc_id: int) -> dict:
+async def process_document_by_id_async(
+    doc_id: int,
+    collection_name: str = "meditation_chunks",
+) -> dict:
     """
     Process/resume a document by its ID.
 
     Args:
         doc_id: Database ID of the document to process
+        collection_name: Name of the vector store collection
 
     Returns:
         dict: Result from orchestrator
     """
-    orchestrator = get_orchestrator()
+    orchestrator = get_orchestrator(collection_name)
     result = await orchestrator.process(source=doc_id)
     return result
 
 
-def process_document_by_id(doc_id: int) -> dict:
+def process_document_by_id(
+    doc_id: int,
+    collection_name: str = "meditation_chunks",
+) -> dict:
     """Synchronous wrapper for async document processing."""
-    return asyncio.run(process_document_by_id_async(doc_id))
+    return asyncio.run(process_document_by_id_async(doc_id, collection_name))
