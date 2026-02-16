@@ -419,6 +419,32 @@ class MarkdownChunker:
         """Extract just the Header N keys from metadata as a dict."""
         return {k: v for k, v in metadata.items() if k.startswith("Header ")}
 
+    def _build_header_path(self, header_dict: Dict[str, str]) -> Tuple[str, Dict[str, int]]:
+        """Build a header path string and level map from a Header N dict.
+
+        Args:
+            header_dict: Dict like {"Header 1": "Title", "Header 3": "Section"}
+
+        Returns:
+            Tuple of (path_string, level_map):
+                path_string: "Title > Section"
+                level_map: {"Title": 1, "Section": 3}
+        """
+        levels = {}
+        for key, value in header_dict.items():
+            if key.startswith("Header "):
+                level = int(key.split()[1])
+                levels[level] = value
+
+        if not levels:
+            return "", {}
+
+        sorted_levels = sorted(levels.keys())
+        path_parts = [levels[l] for l in sorted_levels]
+        level_map = {levels[l]: l for l in sorted_levels}
+
+        return " > ".join(path_parts), level_map
+
     def _merge_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
         """
         Merge metadata from two chunks, accumulating all unique header sets.
