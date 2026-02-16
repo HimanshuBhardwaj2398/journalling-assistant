@@ -332,14 +332,9 @@ class MarkdownChunker:
         """
         Combines adjacent small text chunks into larger ones.
 
-        This method has a special rule for "tiny" chunks (less than 20
-        characters): they are unconditionally merged with the following chunk,
-        ignoring other size constraints for that single merge.
-
-        For other chunks smaller than `self.config.min_size`, it merges them
-        with subsequent neighbors until the combined chunk's size is at least
-        `self.config.min_size` or until adding the next chunk would exceed
-        `self.config.max_size`.
+        Merges freely across section boundaries. All unique header sets
+        are accumulated in 'all_headers' metadata so the TOC builder
+        can recover every section heading.
 
         Args:
             chunks: A list of Document objects to process.
@@ -358,12 +353,11 @@ class MarkdownChunker:
             current_chunk = chunks[chunk_index]
             current_chunk_size = len(current_chunk.page_content.split())
 
-            # If a chunk is tiny, unconditionally merge it with the next one.
+            # If a chunk is tiny, merge with next chunk.
             if current_chunk_size < TINY_CHUNK_THRESHOLD and (chunk_index + 1) < len(
                 chunks
             ):
                 next_chunk = chunks[chunk_index + 1]
-
                 merged_content = "\n\n".join(
                     [current_chunk.page_content, next_chunk.page_content]
                 )
@@ -376,8 +370,6 @@ class MarkdownChunker:
                     page_content=merged_content, metadata=merged_metadata
                 )
                 merged_chunks.append(new_chunk)
-
-                # Advance index past the two chunks we just merged
                 chunk_index += 2
                 continue
 
@@ -387,7 +379,7 @@ class MarkdownChunker:
                 chunk_index += 1
                 continue
 
-            # Start combining other small chunks that are not "tiny".
+            # Start combining other small chunks.
             content_parts = [current_chunk.page_content]
             combined_metadata = current_chunk.metadata.copy()
             combined_size = current_chunk_size
@@ -423,14 +415,44 @@ class MarkdownChunker:
 
         return merged_chunks
 
-    def _merge_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
-        """Merge metadata from two chunks, keeping common headers."""
-        merged = {k: v for k, v in meta1.items() if not k.startswith("Header ")}
+    def _extract_header_set(self, metadata: Dict) -> Dict[str, str]:
+        """Extract just the Header N keys from metadata as a dict."""
+        return {k: v for k, v in metadata.items() if k.startswith("Header ")}
 
-        # Keep only headers that are the same in both chunks
-        for key, value in meta1.items():
-            if key.startswith("Header ") and meta2.get(key) == value:
-                merged[key] = value
+    def _merge_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
+        """
+        Merge metadata from two chunks, accumulating all unique header sets.
+
+        Keeps meta1's Header N keys as the primary headers and collects
+        every unique header combination into 'all_headers' so the TOC
+        builder can recover all section headings even after merging.
+        """
+        merged = meta1.copy()
+
+        # Collect all unique header sets from both sides
+        existing_headers = list(meta1.get("all_headers", []))
+        if not existing_headers:
+            h1 = self._extract_header_set(meta1)
+            if h1:
+                existing_headers.append(h1)
+
+        incoming_headers = list(meta2.get("all_headers", []))
+        if not incoming_headers:
+            h2 = self._extract_header_set(meta2)
+            if h2:
+                incoming_headers.append(h2)
+
+        for h_set in incoming_headers:
+            if h_set not in existing_headers:
+                existing_headers.append(h_set)
+
+        if existing_headers:
+            merged["all_headers"] = existing_headers
+
+        # Add non-header metadata from meta2 that isn't already present
+        for k, v in meta2.items():
+            if not k.startswith("Header ") and k != "all_headers" and k not in merged:
+                merged[k] = v
 
         return merged
 

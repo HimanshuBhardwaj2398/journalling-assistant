@@ -278,6 +278,9 @@ class DatabasePersistenceStage(PipelineStage):
         """
         Build table of contents with both structured entries and text representation.
 
+        Reads from 'all_headers' metadata when available (set by merge logic),
+        falling back to individual Header N keys for non-merged chunks.
+
         Args:
             chunks: List of LangChain Documents with header metadata
 
@@ -292,34 +295,46 @@ class DatabasePersistenceStage(PipelineStage):
         for idx, chunk in enumerate(chunks):
             metadata = chunk.metadata or {}
 
-            for level in range(1, 7):
-                header_text = metadata.get(f"Header {level}")
-                if not header_text:
-                    continue
+            # Collect header sets: use all_headers if present, else build from Header N keys
+            header_sets = metadata.get("all_headers", [])
+            if not header_sets:
+                single_set = {}
+                for level in range(1, 7):
+                    h = metadata.get(f"Header {level}")
+                    if h:
+                        single_set[f"Header {level}"] = h
+                if single_set:
+                    header_sets = [single_set]
 
-                # Skip duplicates
-                header_key = (level, header_text)
-                if header_key in seen_headers:
-                    continue
-                seen_headers.add(header_key)
+            for h_set in header_sets:
+                for level in range(1, 7):
+                    header_text = h_set.get(f"Header {level}")
+                    if not header_text:
+                        continue
 
-                # Pop stack until we find parent level
-                while header_stack and header_stack[-1][0] >= level:
-                    header_stack.pop()
+                    # Skip duplicates
+                    header_key = (level, header_text)
+                    if header_key in seen_headers:
+                        continue
+                    seen_headers.add(header_key)
 
-                entry_id = f"h{level}_{entry_count}"
-                parent_id = header_stack[-1][2] if header_stack else None
+                    # Pop stack until we find parent level
+                    while header_stack and header_stack[-1][0] >= level:
+                        header_stack.pop()
 
-                entries.append({
-                    "id": entry_id,
-                    "level": level,
-                    "text": header_text,
-                    "parent_id": parent_id,
-                    "chunk_index": idx,
-                })
+                    entry_id = f"h{level}_{entry_count}"
+                    parent_id = header_stack[-1][2] if header_stack else None
 
-                header_stack.append((level, header_text, entry_id))
-                entry_count += 1
+                    entries.append({
+                        "id": entry_id,
+                        "level": level,
+                        "text": header_text,
+                        "parent_id": parent_id,
+                        "chunk_index": idx,
+                    })
+
+                    header_stack.append((level, header_text, entry_id))
+                    entry_count += 1
 
         # Build indented text representation
         text_lines = []
