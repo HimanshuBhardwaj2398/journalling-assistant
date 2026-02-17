@@ -42,3 +42,86 @@ class TestBuildHeaderPath:
         path, level_map = self.chunker._build_header_path(header_dict)
         assert path == "Title"
         assert level_map == {"Title": 1}
+
+
+class TestAddFinalMetadata:
+    """Tests for _add_final_metadata with new metadata format."""
+
+    def setup_method(self):
+        self.chunker = MarkdownChunker(
+            text="# Test Doc\nSome content",
+            config=Config(enable_semantic=False),
+            title="Test Doc",
+        )
+
+    def test_single_header_chunk(self):
+        """Non-combined chunk gets single path in all_header_paths."""
+        chunks = [
+            Document(
+                page_content="Some content about meditation.",
+                metadata={"Header 1": "Digha Nikaya", "Header 2": "Sutta 1"},
+            )
+        ]
+        result = self.chunker._add_final_metadata(chunks)
+        meta = result[0].metadata
+
+        assert meta["all_header_paths"] == ["Digha Nikaya > Sutta 1"]
+        assert meta["header_level_map"] == {"Digha Nikaya": 1, "Sutta 1": 2}
+        assert meta["doc_title"] == "Test Doc"
+        assert meta["word_count"] == 4
+        assert meta["char_count"] == 30
+        # Old fields must be gone
+        assert "Header 1" not in meta
+        assert "Header 2" not in meta
+        assert "primary_header" not in meta
+        assert "header_level" not in meta
+        assert "section_path" not in meta
+        assert "chunk_index" not in meta
+
+    def test_combined_chunk_with_all_headers(self):
+        """Combined chunk with all_headers gets multiple paths."""
+        chunks = [
+            Document(
+                page_content="Content spanning sections.",
+                metadata={
+                    "Header 1": "DN",
+                    "Header 2": "Sutta 1",
+                    "is_combined": True,
+                    "all_headers": [
+                        {"Header 1": "DN", "Header 2": "Sutta 1"},
+                        {"Header 1": "DN", "Header 2": "Sutta 2"},
+                    ],
+                },
+            )
+        ]
+        result = self.chunker._add_final_metadata(chunks)
+        meta = result[0].metadata
+
+        assert meta["all_header_paths"] == ["DN > Sutta 1", "DN > Sutta 2"]
+        assert meta["header_level_map"] == {"DN": 1, "Sutta 1": 2, "Sutta 2": 2}
+        assert meta["is_combined"] is True
+        assert "all_headers" not in meta
+        assert "Header 1" not in meta
+
+    def test_chunk_with_no_headers(self):
+        """Chunk without headers gets empty paths."""
+        chunks = [
+            Document(page_content="Standalone content.", metadata={})
+        ]
+        result = self.chunker._add_final_metadata(chunks)
+        meta = result[0].metadata
+
+        assert meta["all_header_paths"] == []
+        assert meta["header_level_map"] == {}
+        assert meta["doc_title"] == "Test Doc"
+
+    def test_is_semantic_split_preserved(self):
+        """is_semantic_split flag survives transformation."""
+        chunks = [
+            Document(
+                page_content="Split content.",
+                metadata={"Header 1": "Title", "is_semantic_split": True},
+            )
+        ]
+        result = self.chunker._add_final_metadata(chunks)
+        assert result[0].metadata["is_semantic_split"] is True
