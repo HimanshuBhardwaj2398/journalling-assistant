@@ -1,5 +1,11 @@
 """Tests for chunk metadata restructure."""
 
+import sys
+from pathlib import Path
+
+# Avoid triggering ingestion/__init__.py which imports llama_cloud_services
+sys.modules.setdefault("ingestion", type(sys)("ingestion"))
+
 import pytest
 from langchain.schema import Document
 from ingestion.chunking import MarkdownChunker, Config
