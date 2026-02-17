@@ -401,7 +401,8 @@ def rebuild_document(
         keys_to_remove = [k for k in old_meta if k.startswith("Header ")]
         keys_to_remove.extend([
             "all_headers", "primary_header", "header_level",
-            "section_path",
+            "section_path", "original_doc_id", "original_doc_title",
+            "chunk_index",
         ])
         if keys_to_remove and not dry_run:
             cleaned = {k: v for k, v in old_meta.items() if k not in keys_to_remove}

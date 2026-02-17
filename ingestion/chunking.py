@@ -492,7 +492,7 @@ class MarkdownChunker:
         Removes all intermediate metadata fields (Header N, all_headers,
         chunk_index, primary_header, header_level, section_path).
         """
-        for i, chunk in enumerate(chunks):
+        for chunk in chunks:
             # Collect header dicts from all_headers (combined) or Header N keys
             all_headers = chunk.metadata.get("all_headers", [])
             if not all_headers:
