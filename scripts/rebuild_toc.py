@@ -4,7 +4,7 @@ Rebuild TOC, chunk header metadata, and missing markdown for already-ingested do
 
 Re-extracts headers from stored markdown and chunk text to fix:
 - Document-level table_of_contents in doc_metadata
-- Chunk-level all_headers in chunk_metadata
+- Chunk-level all_header_paths and header_level_map in chunk_metadata
 
 Can also backfill missing markdown content from chunk text or by re-parsing
 the original source.
@@ -54,19 +54,36 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def extract_headers_from_text(text: str) -> List[Dict[str, str]]:
+def extract_headers_from_text(text: str) -> Tuple[List[str], Dict[str, int]]:
     """
-    Extract all markdown header lines from text via regex.
+    Extract markdown headers from text and return as paths and level map.
 
-    Returns a list of header sets, where each set is a dict like
-    {"Header 1": "Some Title"}. Each header line becomes its own set.
+    Returns:
+        Tuple of (all_header_paths, header_level_map)
     """
-    headers = []
+    current_headers = [None] * 7  # levels 0-6
+    paths = []
+    level_map = {}
+
     for match in re.finditer(r"^(#{1,6})\s+(.+)$", text, re.MULTILINE):
         level = len(match.group(1))
-        header_text = match.group(2).strip()
-        headers.append({f"Header {level}": header_text})
-    return headers
+        header = match.group(2).strip()
+        current_headers[level] = header
+        for i in range(level + 1, 7):
+            current_headers[i] = None
+
+        # Snapshot current path
+        parts = []
+        for l in range(1, 7):
+            if current_headers[l]:
+                parts.append(current_headers[l])
+                level_map[current_headers[l]] = l
+
+        path = " > ".join(parts)
+        if path and path not in paths:
+            paths.append(path)
+
+    return paths, level_map
 
 
 def build_toc_from_markdown(markdown: str) -> dict:
@@ -310,6 +327,12 @@ def rebuild_document(
     old_chunk_headers = set()
     for chunk in chunks:
         meta = chunk.chunk_metadata or {}
+        # Check new format
+        for path in meta.get("all_header_paths", []):
+            for segment in path.split(" > "):
+                level = meta.get("header_level_map", {}).get(segment, 0)
+                old_chunk_headers.add((level, segment))
+        # Check old format as fallback
         for level in range(1, 7):
             h = meta.get(f"Header {level}")
             if h:
@@ -319,35 +342,76 @@ def rebuild_document(
     new_toc = build_toc_from_markdown(doc.markdown)
     new_toc_count = len(new_toc["entries"])
 
-    # --- Step B: Backfill all_headers on chunks ---
+    # --- Step B: Rebuild header paths on chunks ---
     chunks_updated = 0
     new_chunk_headers = set()
 
+    # Maintain running header context across ordered chunks
+    running_headers = [None] * 7  # levels 0-6
+
     for chunk in chunks:
-        headers = extract_headers_from_text(chunk.chunk_text)
+        chunk_paths = []
+        chunk_level_map = {}
 
-        # Track all headers found across chunks
-        for h_set in headers:
-            for level in range(1, 7):
-                h = h_set.get(f"Header {level}")
-                if h:
-                    new_chunk_headers.add((level, h))
+        chunk_header_matches = list(
+            re.finditer(r"^(#{1,6})\s+(.+)$", chunk.chunk_text, re.MULTILINE)
+        )
 
-        if not headers:
+        if chunk_header_matches:
+            for match in chunk_header_matches:
+                level = len(match.group(1))
+                header = match.group(2).strip()
+                running_headers[level] = header
+                for i in range(level + 1, 7):
+                    running_headers[i] = None
+
+                # Snapshot path
+                parts = []
+                for l in range(1, 7):
+                    if running_headers[l]:
+                        parts.append(running_headers[l])
+                        chunk_level_map[running_headers[l]] = l
+
+                path = " > ".join(parts)
+                if path and path not in chunk_paths:
+                    chunk_paths.append(path)
+
+                new_chunk_headers.add((level, header))
+        else:
+            # No headers in chunk — use running context
+            parts = []
+            for l in range(1, 7):
+                if running_headers[l]:
+                    parts.append(running_headers[l])
+                    chunk_level_map[running_headers[l]] = l
+            path = " > ".join(parts)
+            if path:
+                chunk_paths = [path]
+
+        if not chunk_paths and not chunk_level_map:
             continue
 
-        # Build updated metadata
-        metadata_updates = {"all_headers": headers}
+        metadata_updates = {
+            "all_header_paths": chunk_paths,
+            "header_level_map": chunk_level_map,
+        }
 
-        # Also set primary Header N keys from the first header found at each level
-        seen_levels = {}
-        for h_set in headers:
-            for k, v in h_set.items():
-                if k not in seen_levels:
-                    seen_levels[k] = v
-        metadata_updates.update(seen_levels)
-
-        if not dry_run:
+        # Remove old-format keys if present
+        old_meta = chunk.chunk_metadata or {}
+        keys_to_remove = [k for k in old_meta if k.startswith("Header ")]
+        keys_to_remove.extend([
+            "all_headers", "primary_header", "header_level",
+            "section_path",
+        ])
+        if keys_to_remove and not dry_run:
+            cleaned = {k: v for k, v in old_meta.items() if k not in keys_to_remove}
+            cleaned.update(metadata_updates)
+            chunk_crud.update_chunk_metadata(
+                chunk_id=chunk.id,
+                metadata_updates=cleaned,
+                merge=False,
+            )
+        elif not dry_run:
             chunk_crud.update_chunk_metadata(
                 chunk_id=chunk.id,
                 metadata_updates=metadata_updates,
