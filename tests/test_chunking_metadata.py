@@ -1,14 +1,9 @@
 """Tests for chunk metadata restructure."""
 
-import sys
-from pathlib import Path
-
-# Avoid triggering ingestion/__init__.py which imports llama_cloud_services
-sys.modules.setdefault("ingestion", type(sys)("ingestion"))
-
 import pytest
 from langchain.schema import Document
 from ingestion.chunking import MarkdownChunker, Config
+from ingestion.stages import DatabasePersistenceStage
 
 
 class TestBuildHeaderPath:
@@ -131,3 +126,65 @@ class TestAddFinalMetadata:
         ]
         result = self.chunker._add_final_metadata(chunks)
         assert result[0].metadata["is_semantic_split"] is True
+
+
+class TestBuildTableOfContents:
+    """Tests for TOC builder with new metadata format."""
+
+    def setup_method(self):
+        self.stage = DatabasePersistenceStage()
+
+    def test_single_path_chunks(self):
+        chunks = [
+            Document(
+                page_content="Content",
+                metadata={
+                    "all_header_paths": ["DN > Sutta 1"],
+                    "header_level_map": {"DN": 1, "Sutta 1": 2},
+                },
+            ),
+            Document(
+                page_content="Content",
+                metadata={
+                    "all_header_paths": ["DN > Sutta 2"],
+                    "header_level_map": {"DN": 1, "Sutta 2": 2},
+                },
+            ),
+        ]
+        toc = self.stage._build_table_of_contents(chunks)
+
+        assert len(toc["entries"]) == 3  # DN, Sutta 1, Sutta 2
+        assert toc["entries"][0]["text"] == "DN"
+        assert toc["entries"][0]["level"] == 1
+        assert toc["entries"][1]["text"] == "Sutta 1"
+        assert toc["entries"][1]["level"] == 2
+        assert toc["entries"][1]["parent_id"] == toc["entries"][0]["id"]
+
+    def test_combined_chunk_multiple_paths(self):
+        chunks = [
+            Document(
+                page_content="Content",
+                metadata={
+                    "all_header_paths": ["DN > Sutta 1", "DN > Sutta 2"],
+                    "header_level_map": {"DN": 1, "Sutta 1": 2, "Sutta 2": 2},
+                },
+            ),
+        ]
+        toc = self.stage._build_table_of_contents(chunks)
+
+        assert len(toc["entries"]) == 3  # DN, Sutta 1, Sutta 2
+
+    def test_empty_chunks(self):
+        toc = self.stage._build_table_of_contents([])
+        assert toc["entries"] == []
+        assert toc["text"] == ""
+
+    def test_chunks_with_no_headers(self):
+        chunks = [
+            Document(
+                page_content="Content",
+                metadata={"all_header_paths": [], "header_level_map": {}},
+            ),
+        ]
+        toc = self.stage._build_table_of_contents(chunks)
+        assert toc["entries"] == []

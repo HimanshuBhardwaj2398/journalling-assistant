@@ -221,16 +221,9 @@ class EmbeddingStage(PipelineStage):
         logger.info(f"Embedding {len(context.chunks)} chunks")
 
         try:
-            # Add UUIDs and metadata to each chunk BEFORE embedding
-            for idx, chunk in enumerate(context.chunks):
-                # Generate UUID for linking with database
-                chunk_uuid = str(uuid_lib.uuid4())
-
-                # Add to metadata
-                chunk.metadata["uuid"] = chunk_uuid
-                chunk.metadata["original_doc_id"] = context.document_id
-                chunk.metadata["original_doc_title"] = context.title
-                chunk.metadata["chunk_index"] = idx
+            # Add UUIDs to each chunk BEFORE embedding
+            for chunk in context.chunks:
+                chunk.metadata["uuid"] = str(uuid_lib.uuid4())
 
             # Embed and store in vector database
             vector_ids = self.vector_store_manager.embed_documents(context.chunks)
@@ -276,13 +269,13 @@ class DatabasePersistenceStage(PipelineStage):
 
     def _build_table_of_contents(self, chunks: List) -> dict:
         """
-        Build table of contents with both structured entries and text representation.
+        Build table of contents from chunk header paths.
 
-        Reads from 'all_headers' metadata when available (set by merge logic),
-        falling back to individual Header N keys for non-merged chunks.
+        Reads all_header_paths and header_level_map from chunk metadata
+        to construct a hierarchical TOC.
 
         Args:
-            chunks: List of LangChain Documents with header metadata
+            chunks: List of LangChain Documents with header path metadata
 
         Returns:
             Dict with 'entries' (structured list) and 'text' (indented string)
@@ -294,31 +287,19 @@ class DatabasePersistenceStage(PipelineStage):
 
         for idx, chunk in enumerate(chunks):
             metadata = chunk.metadata or {}
+            paths = metadata.get("all_header_paths", [])
+            level_map = metadata.get("header_level_map", {})
 
-            # Collect header sets: use all_headers if present, else build from Header N keys
-            header_sets = metadata.get("all_headers", [])
-            if not header_sets:
-                single_set = {}
-                for level in range(1, 7):
-                    h = metadata.get(f"Header {level}")
-                    if h:
-                        single_set[f"Header {level}"] = h
-                if single_set:
-                    header_sets = [single_set]
+            for path in paths:
+                segments = path.split(" > ")
+                for segment in segments:
+                    level = level_map.get(segment, 1)
 
-            for h_set in header_sets:
-                for level in range(1, 7):
-                    header_text = h_set.get(f"Header {level}")
-                    if not header_text:
-                        continue
-
-                    # Skip duplicates
-                    header_key = (level, header_text)
+                    header_key = (level, segment)
                     if header_key in seen_headers:
                         continue
                     seen_headers.add(header_key)
 
-                    # Pop stack until we find parent level
                     while header_stack and header_stack[-1][0] >= level:
                         header_stack.pop()
 
@@ -328,15 +309,14 @@ class DatabasePersistenceStage(PipelineStage):
                     entries.append({
                         "id": entry_id,
                         "level": level,
-                        "text": header_text,
+                        "text": segment,
                         "parent_id": parent_id,
                         "chunk_index": idx,
                     })
 
-                    header_stack.append((level, header_text, entry_id))
+                    header_stack.append((level, segment, entry_id))
                     entry_count += 1
 
-        # Build indented text representation
         text_lines = []
         for entry in entries:
             indent = "  " * (entry["level"] - 1)
@@ -395,7 +375,10 @@ class DatabasePersistenceStage(PipelineStage):
                         "uuid": chunk_uuid,
                         "chunk_text": chunk.page_content,
                         "chunk_index": idx,
-                        "chunk_metadata": chunk.metadata,
+                        "chunk_metadata": {
+                            k: v for k, v in chunk.metadata.items()
+                            if k != "uuid"
+                        },
                     })
 
                 # Save chunks to database
