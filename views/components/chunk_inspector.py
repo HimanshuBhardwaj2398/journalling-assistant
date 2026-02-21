@@ -18,11 +18,13 @@ def render_chunk_inspector(chunks: List, key_prefix: str = "ci"):
         st.markdown(f"**{total} chunks**")
 
     with ctrl_col2:
+        saved_idx = int(st.session_state.get(f"{key_prefix}_idx", 0))
+        current_idx = _clamp_index(saved_idx, total)
         chunk_idx = st.number_input(
             "Go to chunk",
             min_value=0,
             max_value=total - 1,
-            value=st.session_state.get(f"{key_prefix}_idx", 0),
+            value=current_idx,
             step=1,
             key=f"{key_prefix}_nav",
         )
@@ -71,6 +73,8 @@ def _render_single_chunk(chunk):
 
     metadata = chunk.chunk_metadata or {}
     header_path = metadata.get("header_path", "")
+    if not header_path:
+        header_path = _legacy_header_path_from_metadata(metadata)
     if header_path:
         st.markdown(f"**Header path:** {header_path}")
 
@@ -87,3 +91,28 @@ def _render_single_chunk(chunk):
     st.markdown("**Content:**")
     st.text(chunk.chunk_text)
     st.markdown("---")
+
+
+def _clamp_index(value: int, total: int) -> int:
+    """Clamp persisted index into valid chunk range."""
+    if total <= 0:
+        return 0
+    if value < 0:
+        return 0
+    if value >= total:
+        return total - 1
+    return value
+
+
+def _legacy_header_path_from_metadata(metadata: dict) -> str:
+    """Build a fallback header path from legacy Header N metadata keys."""
+    if not isinstance(metadata, dict):
+        return ""
+
+    headers = []
+    for level in range(1, 7):
+        value = metadata.get(f"Header {level}")
+        if isinstance(value, str) and value.strip():
+            headers.append(value.strip())
+
+    return " > ".join(headers)
