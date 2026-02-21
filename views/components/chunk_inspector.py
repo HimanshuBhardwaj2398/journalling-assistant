@@ -12,7 +12,7 @@ def render_chunk_inspector(chunks: List, key_prefix: str = "ci"):
         return
 
     total = len(chunks)
-    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1, 2, 2])
+    ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4 = st.columns([1, 2, 2, 1.25])
 
     with ctrl_col1:
         st.markdown(f"**{total} chunks**")
@@ -37,6 +37,13 @@ def render_chunk_inspector(chunks: List, key_prefix: str = "ci"):
             key=f"{key_prefix}_filter",
         )
 
+    with ctrl_col4:
+        show_all = st.checkbox(
+            "Show all",
+            value=False,
+            key=f"{key_prefix}_show_all",
+        )
+
     if filter_text:
         filtered = [c for c in chunks if filter_text.lower() in c.chunk_text.lower()]
         if not filtered:
@@ -44,8 +51,15 @@ def render_chunk_inspector(chunks: List, key_prefix: str = "ci"):
             return
         st.caption(f"Showing {len(filtered)} of {total} chunks matching '{filter_text}'")
         display_chunks = filtered
+    elif show_all:
+        st.caption(f"Showing all {total} chunks")
+        display_chunks = chunks
     else:
-        display_chunks = [chunks[int(chunk_idx)]]
+        selected = chunks[int(chunk_idx)]
+        st.caption(
+            f"Showing 1 of {total} chunks (selected chunk index: {selected.chunk_index})"
+        )
+        display_chunks = [selected]
 
     for chunk in display_chunks:
         _render_single_chunk(chunk)

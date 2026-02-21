@@ -94,24 +94,37 @@ def _render_toc_tab(
             st.warning("No TOC headers found")
             return
 
+        all_sections = "__ALL_SECTIONS__"
         selected_header = st.radio(
             "Select section",
-            headers,
+            [all_sections, *headers],
             key=f"toc_header_select_{doc_id}",
             label_visibility="collapsed",
+            format_func=lambda option: (
+                f"All sections ({len(sorted_chunks)} chunks)"
+                if option == all_sections
+                else option
+            ),
         )
 
     with right_col:
-        st.subheader(f"Chunks: {selected_header}")
-        matching = [
-            chunk for chunk in sorted_chunks
-            if _chunk_matches_header(chunk, selected_header)
-        ]
+        if selected_header == all_sections:
+            st.subheader("Chunks: All sections")
+            matching = sorted_chunks
+            st.caption("Showing every chunk in this document.")
+        else:
+            st.subheader(f"Chunks: {selected_header}")
+            matching = [
+                chunk for chunk in sorted_chunks
+                if _chunk_matches_header(chunk, selected_header)
+            ]
+
         if not matching:
             st.info("No chunks found under this header.")
             return
 
-        st.caption(f"{len(matching)} chunk(s)")
+        if selected_header != all_sections:
+            st.caption(f"Showing {len(matching)} of {len(sorted_chunks)} chunk(s)")
         render_chunk_inspector(matching, key_prefix=f"toc_{doc_id}")
 
 
