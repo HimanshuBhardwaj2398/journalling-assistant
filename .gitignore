@@ -51,3 +51,4 @@ postgres_data/
 
 # Claude context (may contain personal project notes)
 claude.md
+CLAUDE.md

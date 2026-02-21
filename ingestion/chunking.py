@@ -419,6 +419,32 @@ class MarkdownChunker:
         """Extract just the Header N keys from metadata as a dict."""
         return {k: v for k, v in metadata.items() if k.startswith("Header ")}
 
+    def _build_header_path(self, header_dict: Dict[str, str]) -> Tuple[str, Dict[str, int]]:
+        """Build a header path string and level map from a Header N dict.
+
+        Args:
+            header_dict: Dict like {"Header 1": "Title", "Header 3": "Section"}
+
+        Returns:
+            Tuple of (path_string, level_map):
+                path_string: "Title > Section"
+                level_map: {"Title": 1, "Section": 3}
+        """
+        levels = {}
+        for key, value in header_dict.items():
+            if key.startswith("Header "):
+                level = int(key.split()[1])
+                levels[level] = value
+
+        if not levels:
+            return "", {}
+
+        sorted_levels = sorted(levels.keys())
+        path_parts = [levels[l] for l in sorted_levels]
+        level_map = {levels[l]: l for l in sorted_levels}
+
+        return " > ".join(path_parts), level_map
+
     def _merge_metadata(self, meta1: Dict, meta2: Dict) -> Dict:
         """
         Merge metadata from two chunks, accumulating all unique header sets.
@@ -457,26 +483,46 @@ class MarkdownChunker:
         return merged
 
     def _add_final_metadata(self, chunks: List[Document]) -> List[Document]:
-        """Add final metadata to all chunks."""
-        for i, chunk in enumerate(chunks):
-            # Get header hierarchy
-            header_keys = sorted(
-                [k for k in chunk.metadata.keys() if k.startswith("Header ")],
-                key=lambda k: int(k.split()[1]),
-            )
-            header_trail = [chunk.metadata[k] for k in header_keys]
+        """Transform chunk metadata to final format with header paths.
 
-            # Update metadata
-            chunk.metadata.update(
-                {
-                    "chunk_index": i,
-                    "doc_title": self.title,
-                    "word_count": len(chunk.page_content.split()),
-                    "char_count": len(chunk.page_content),
-                    "primary_header": header_trail[-1] if header_trail else None,
-                    "header_level": len(header_trail),
-                    "section_path": " > ".join([self.title] + header_trail),
-                }
-            )
+        Converts internal Header N keys and all_headers lists into the
+        clean output format: all_header_paths (list of delimited strings)
+        and header_level_map (dict of header text to level).
+
+        Removes all intermediate metadata fields (Header N, all_headers,
+        chunk_index, primary_header, header_level, section_path).
+        """
+        for chunk in chunks:
+            # Collect header dicts from all_headers (combined) or Header N keys
+            all_headers = chunk.metadata.get("all_headers", [])
+            if not all_headers:
+                header_set = self._extract_header_set(chunk.metadata)
+                if header_set:
+                    all_headers = [header_set]
+
+            # Build paths and level map
+            all_paths = []
+            level_map = {}
+            for h_dict in all_headers:
+                path, lmap = self._build_header_path(h_dict)
+                if path and path not in all_paths:
+                    all_paths.append(path)
+                level_map.update(lmap)
+
+            # Remove old keys
+            keys_to_remove = [k for k in chunk.metadata if k.startswith("Header ")]
+            keys_to_remove.extend([
+                "all_headers", "primary_header", "header_level",
+                "section_path", "chunk_index",
+            ])
+            for key in keys_to_remove:
+                chunk.metadata.pop(key, None)
+
+            # Set new metadata
+            chunk.metadata["all_header_paths"] = all_paths
+            chunk.metadata["header_level_map"] = level_map
+            chunk.metadata["doc_title"] = self.title
+            chunk.metadata["word_count"] = len(chunk.page_content.split())
+            chunk.metadata["char_count"] = len(chunk.page_content)
 
         return chunks

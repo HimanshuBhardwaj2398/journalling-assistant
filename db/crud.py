@@ -367,6 +367,37 @@ class ChunkCRUD:
             .first()
         )
 
+    def update_chunk_metadata(
+        self,
+        chunk_id: int,
+        metadata_updates: Dict[str, Any],
+        merge: bool = True,
+    ) -> Optional[schema.Chunk]:
+        """
+        Update metadata for a single chunk.
+
+        Args:
+            chunk_id: ID of chunk to update
+            metadata_updates: Dictionary of metadata to add/update
+            merge: If True, merge with existing metadata. If False, replace.
+
+        Returns:
+            Updated chunk or None if not found
+        """
+        chunk = (
+            self.db.query(schema.Chunk)
+            .filter(schema.Chunk.id == chunk_id)
+            .first()
+        )
+        if chunk:
+            if merge and chunk.chunk_metadata:
+                chunk.chunk_metadata = {**chunk.chunk_metadata, **metadata_updates}
+            else:
+                chunk.chunk_metadata = metadata_updates
+            self.db.commit()
+            self.db.refresh(chunk)
+        return chunk
+
     def delete_chunks_by_document(self, document_id: int) -> int:
         """
         Delete all chunks for a document.

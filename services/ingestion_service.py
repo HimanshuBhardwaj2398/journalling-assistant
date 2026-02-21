@@ -6,11 +6,13 @@ Handles document ingestion, processing, and orchestration.
 
 import asyncio
 import os
+from typing import Optional, Callable
 
 from db.database import session_scope
 from db.crud import DocumentCRUD
 from db.schema import DocumentStatus
 from ingestion.orchestrator import IngestionOrchestrator
+from core.interfaces import StageStatus
 from ingestion.embed import VectorStoreConfig
 from core.exceptions import DuplicateDocumentError
 
@@ -41,6 +43,7 @@ async def ingest_document_async(
     category: str,
     tags: list,
     collection_name: str = "meditation_chunks",
+    on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
 ) -> dict:
     """
     Ingest document with metadata.
@@ -53,6 +56,7 @@ async def ingest_document_async(
         category: Primary category (e.g., buddhism)
         tags: List of tags for searchability
         collection_name: Name of the vector store collection
+        on_stage_update: Optional callback(stage_name, status) for progress updates
 
     Returns:
         dict: Result from orchestrator with success status and chunk count
@@ -100,7 +104,11 @@ async def ingest_document_async(
         doc_id = doc.id
 
     # Process through pipeline
-    result = await orchestrator.process(source=doc_id, title=title)
+    result = await orchestrator.process(
+        source=doc_id,
+        title=title,
+        on_stage_update=on_stage_update,
+    )
     return result
 
 
@@ -112,11 +120,19 @@ def ingest_document(
     category: str,
     tags: list,
     collection_name: str = "meditation_chunks",
+    on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
 ) -> dict:
     """Synchronous wrapper for async ingestion."""
     return asyncio.run(
         ingest_document_async(
-            source, title, description, doc_type, category, tags, collection_name
+            source,
+            title,
+            description,
+            doc_type,
+            category,
+            tags,
+            collection_name,
+            on_stage_update=on_stage_update,
         )
     )
 
@@ -124,6 +140,7 @@ def ingest_document(
 async def process_document_by_id_async(
     doc_id: int,
     collection_name: str = "meditation_chunks",
+    on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
 ) -> dict:
     """
     Process/resume a document by its ID.
@@ -136,13 +153,20 @@ async def process_document_by_id_async(
         dict: Result from orchestrator
     """
     orchestrator = get_orchestrator(collection_name)
-    result = await orchestrator.process(source=doc_id)
+    result = await orchestrator.process(source=doc_id, on_stage_update=on_stage_update)
     return result
 
 
 def process_document_by_id(
     doc_id: int,
     collection_name: str = "meditation_chunks",
+    on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
 ) -> dict:
     """Synchronous wrapper for async document processing."""
-    return asyncio.run(process_document_by_id_async(doc_id, collection_name))
+    return asyncio.run(
+        process_document_by_id_async(
+            doc_id,
+            collection_name,
+            on_stage_update=on_stage_update,
+        )
+    )
