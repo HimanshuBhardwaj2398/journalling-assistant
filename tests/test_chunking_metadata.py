@@ -188,3 +188,72 @@ class TestBuildTableOfContents:
         ]
         toc = self.stage._build_table_of_contents(chunks)
         assert toc["entries"] == []
+
+    def test_same_segment_under_different_parents_kept(self):
+        chunks = [
+            Document(
+                page_content="Content",
+                metadata={
+                    "all_header_paths": ["DN 1 > Introduction"],
+                    "header_level_map": {"DN 1": 1, "Introduction": 2},
+                },
+            ),
+            Document(
+                page_content="Content",
+                metadata={
+                    "all_header_paths": ["DN 2 > Introduction"],
+                    "header_level_map": {"DN 2": 1, "Introduction": 2},
+                },
+            ),
+        ]
+        toc = self.stage._build_table_of_contents(chunks)
+        paths = [entry["path_from_root"] for entry in toc["entries"]]
+
+        assert "DN 1 > Introduction" in paths
+        assert "DN 2 > Introduction" in paths
+
+
+class TestSplitOversizedChunks:
+    """Tests for order stability during semantic split."""
+
+    @pytest.mark.asyncio
+    async def test_preserves_order_when_first_chunk_is_oversized(self):
+        chunker = MarkdownChunker(
+            text="# Test\nx",
+            config=Config(
+                enable_semantic=False,
+                max_size=20,
+                min_size=1,
+            ),
+        )
+        chunker.config.enable_parallel = False
+
+        oversized = Document(
+            page_content="A" * 200,
+            metadata={"Header 1": "First"},
+        )
+        normal = Document(
+            page_content="short chunk",
+            metadata={"Header 1": "Second"},
+        )
+
+        def fake_semantic_split(chunk):
+            return [
+                Document(
+                    page_content="split-part-1",
+                    metadata=chunk.metadata.copy(),
+                ),
+                Document(
+                    page_content="split-part-2",
+                    metadata=chunk.metadata.copy(),
+                ),
+            ]
+
+        chunker._semantic_split = fake_semantic_split
+
+        result = await chunker._split_oversized_chunks([oversized, normal])
+        assert [doc.page_content for doc in result] == [
+            "split-part-1",
+            "split-part-2",
+            "short chunk",
+        ]

@@ -222,16 +222,30 @@ class EmbeddingStage(PipelineStage):
 
         try:
             # Add UUIDs to each chunk BEFORE embedding
+            expected_ids = []
             for chunk in context.chunks:
-                chunk.metadata["uuid"] = str(uuid_lib.uuid4())
+                chunk_uuid = str(uuid_lib.uuid4())
+                chunk.metadata["uuid"] = chunk_uuid
+                # PGVector uses Document.id as the persisted vector ID.
+                chunk.id = chunk_uuid
+                expected_ids.append(chunk_uuid)
 
             # Embed and store in vector database
             vector_ids = self.vector_store_manager.embed_documents(context.chunks)
 
             if len(vector_ids) != len(context.chunks):
-                logger.warning(
+                raise EmbeddingError(
                     f"Embedding mismatch: {len(context.chunks)} chunks, "
                     f"{len(vector_ids)} embeddings stored"
+                )
+
+            if set(vector_ids) != set(expected_ids):
+                missing_ids = sorted(set(expected_ids) - set(vector_ids))
+                extra_ids = sorted(set(vector_ids) - set(expected_ids))
+                raise EmbeddingError(
+                    "Embedding ID mismatch. "
+                    f"Missing IDs: {missing_ids[:3]} "
+                    f"Extra IDs: {extra_ids[:3]}"
                 )
 
             logger.info(f"Successfully embedded {len(vector_ids)} chunks")
@@ -281,8 +295,7 @@ class DatabasePersistenceStage(PipelineStage):
             Dict with 'entries' (structured list) and 'text' (indented string)
         """
         entries = []
-        header_stack = []  # [(level, text, id), ...]
-        seen_headers = set()
+        seen_paths = {}  # path_from_root -> entry_id
         entry_count = 0
 
         for idx, chunk in enumerate(chunks):
@@ -291,20 +304,23 @@ class DatabasePersistenceStage(PipelineStage):
             level_map = metadata.get("header_level_map", {})
 
             for path in paths:
-                segments = path.split(" > ")
-                for segment in segments:
-                    level = level_map.get(segment, 1)
+                segments = [s.strip() for s in path.split(" > ") if s.strip()]
+                if not segments:
+                    continue
 
-                    header_key = (level, segment)
-                    if header_key in seen_headers:
+                parent_path = ""
+                for depth, segment in enumerate(segments, start=1):
+                    current_path = (
+                        f"{parent_path} > {segment}" if parent_path else segment
+                    )
+
+                    if current_path in seen_paths:
+                        parent_path = current_path
                         continue
-                    seen_headers.add(header_key)
 
-                    while header_stack and header_stack[-1][0] >= level:
-                        header_stack.pop()
-
+                    level = level_map.get(segment, depth)
                     entry_id = f"h{level}_{entry_count}"
-                    parent_id = header_stack[-1][2] if header_stack else None
+                    parent_id = seen_paths.get(parent_path)
 
                     entries.append({
                         "id": entry_id,
@@ -312,9 +328,11 @@ class DatabasePersistenceStage(PipelineStage):
                         "text": segment,
                         "parent_id": parent_id,
                         "chunk_index": idx,
+                        "path_from_root": current_path,
                     })
 
-                    header_stack.append((level, segment, entry_id))
+                    seen_paths[current_path] = entry_id
+                    parent_path = current_path
                     entry_count += 1
 
         text_lines = []
