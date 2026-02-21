@@ -1706,50 +1706,18 @@ test = ["objgraph", "psutil", "setuptools"]
 
 [[package]]
 name = "griffe"
-version = "2.0.0"
+version = "0.49.0"
 description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "griffe-2.0.0-py3-none-any.whl", hash = "sha256:5418081135a391c3e6e757a7f3f156f1a1a746cc7b4023868ff7d5e2f9a980aa"},
-]
-
-[package.dependencies]
-griffecli = "2.0.0"
-griffelib = "2.0.0"
-
-[package.extras]
-pypi = ["griffelib[pypi] (==2.0.0)"]
-
-[[package]]
-name = "griffecli"
-version = "2.0.0"
-description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "griffecli-2.0.0-py3-none-any.whl", hash = "sha256:9f7cd9ee9b21d55e91689358978d2385ae65c22f307a63fb3269acf3f21e643d"},
+    {file = "griffe-0.49.0-py3-none-any.whl", hash = "sha256:c0d505f2a444ac342b22f4647d6444c8db64964b6a379c14f401fc467c0741a3"},
+    {file = "griffe-0.49.0.tar.gz", hash = "sha256:a7e1235c27d8139e0fd24a5258deef6061bc876a9fda8117a5cf7b53ee940a91"},
 ]
 
 [package.dependencies]
 colorama = ">=0.4"
-griffelib = "2.0.0"
-
-[[package]]
-name = "griffelib"
-version = "2.0.0"
-description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
-optional = false
-python-versions = ">=3.10"
-groups = ["main"]
-files = [
-    {file = "griffelib-2.0.0-py3-none-any.whl", hash = "sha256:01284878c966508b6d6f1dbff9b6fa607bc062d8261c5c7253cb285b06422a7f"},
-]
-
-[package.extras]
-pypi = ["pip (>=24.0)", "platformdirs (>=4.2)", "wheel (>=0.42)"]
 
 [[package]]
 name = "h11"
@@ -7689,4 +7657,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "792421744624566819416441c54b74837543b45c329669f12895cc84e677ad0a"
+content-hash = "fd3f8b3c82a878145f39a33f51d24ac0547b71f9400f67b601ad2178e694c0da"
