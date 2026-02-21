@@ -92,6 +92,44 @@ def _flatten_toc(toc: dict, prefix: str = "") -> list:
     if not isinstance(toc, dict):
         return headers
 
+    entries = toc.get("entries")
+    if isinstance(entries, list):
+        entry_map = {
+            entry.get("id"): entry for entry in entries
+            if isinstance(entry, dict) and entry.get("id")
+        }
+        path_cache = {}
+
+        def build_path(entry: dict) -> str:
+            entry_id = entry.get("id")
+            if entry_id in path_cache:
+                return path_cache[entry_id]
+
+            path_from_root = entry.get("path_from_root")
+            if isinstance(path_from_root, str) and path_from_root:
+                path_cache[entry_id] = path_from_root
+                return path_from_root
+
+            text = (entry.get("text") or "").strip()
+            parent_id = entry.get("parent_id")
+            parent = entry_map.get(parent_id)
+            if parent:
+                parent_path = build_path(parent)
+                full_path = f"{parent_path} > {text}" if parent_path else text
+            else:
+                full_path = text
+
+            path_cache[entry_id] = full_path
+            return full_path
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            full_path = build_path(entry)
+            if full_path and full_path not in headers:
+                headers.append(full_path)
+        return headers
+
     for key, children in toc.items():
         full_path = f"{prefix} > {key}" if prefix else key
         headers.append(full_path)

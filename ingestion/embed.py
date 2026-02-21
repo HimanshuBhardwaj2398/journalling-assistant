@@ -158,6 +158,8 @@ class VectorStoreManager:
 
         try:
             return self._embed_documents_batch(documents)
+        except EmbeddingError:
+            raise
         except Exception as e:
             raise EmbeddingError(f"Failed to embed documents: {e}") from e
 
@@ -191,6 +193,11 @@ class VectorStoreManager:
 
             try:
                 batch_ids = self.vector_store.add_documents(batch)
+                if len(batch_ids) != len(batch):
+                    raise EmbeddingError(
+                        f"Batch {batch_num}/{total_batches} returned {len(batch_ids)} "
+                        f"IDs for {len(batch)} documents"
+                    )
                 all_ids.extend(batch_ids)
                 logger.info(
                     f"Successfully processed batch {batch_num} - {len(batch_ids)} documents stored"
@@ -198,8 +205,9 @@ class VectorStoreManager:
 
             except Exception as e:
                 logger.error(f"Failed to process batch {batch_num}: {e}")
-                # Continue with next batch rather than failing completely
-                continue
+                raise EmbeddingError(
+                    f"Batch {batch_num}/{total_batches} failed: {e}"
+                ) from e
 
         logger.info(
             f"Completed processing: {len(all_ids)}/{total_docs} documents successfully stored"
