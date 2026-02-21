@@ -6,7 +6,7 @@ Replaces linear state machine with dependency-aware stage execution.
 
 import logging
 import os
-from typing import Union, List, Dict, Any, Optional
+from typing import Union, List, Dict, Any, Optional, Callable
 
 from core.interfaces import PipelineStage, PipelineContext, StageStatus
 from core.exceptions import PipelineError, DatabaseError, DocumentNotFoundError
@@ -134,17 +134,27 @@ class PipelineOrchestrator:
 
         return result
 
-    async def execute(self, context: PipelineContext) -> PipelineContext:
+    async def execute(
+        self,
+        context: PipelineContext,
+        on_stage_update: Optional[callable] = None,
+    ) -> PipelineContext:
         """
         Execute pipeline stages in dependency order.
 
         Args:
             context: Initial pipeline context
+            on_stage_update: Optional callback invoked with (stage_name, StageStatus)
+                for each stage transition (RUNNING, COMPLETED, FAILED).
 
         Returns:
             Final context after all stages
         """
         current_context = context
+
+        def _notify(stage_name: str, status: StageStatus):
+            if on_stage_update is not None:
+                on_stage_update(stage_name, status)
 
         for stage in self._execution_order:
             # Skip if already completed
@@ -165,6 +175,7 @@ class PipelineOrchestrator:
 
             # Execute stage
             logger.info(f"Executing stage: {stage.name}")
+            _notify(stage.name, StageStatus.RUNNING)
             try:
                 current_context = await stage.execute(current_context)
 
@@ -172,11 +183,15 @@ class PipelineOrchestrator:
                 if current_context.stage_results.get(stage.name) == StageStatus.FAILED:
                     error = current_context.error_messages.get(stage.name, "Unknown error")
                     logger.error(f"Stage '{stage.name}' failed: {error}")
+                    _notify(stage.name, StageStatus.FAILED)
                     # Continue to next stage (allows partial processing)
+                else:
+                    _notify(stage.name, StageStatus.COMPLETED)
 
             except Exception as e:
                 logger.error(f"Unexpected error in stage '{stage.name}': {e}", exc_info=True)
                 current_context = current_context.mark_stage_failed(stage.name, str(e))
+                _notify(stage.name, StageStatus.FAILED)
 
         return current_context
 
@@ -221,6 +236,7 @@ class IngestionOrchestrator:
         self,
         source: Union[str, int],
         title: Optional[str] = None,
+        on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
     ) -> Dict[str, Any]:
         """
         Process a document through the ingestion pipeline.
@@ -228,6 +244,7 @@ class IngestionOrchestrator:
         Args:
             source: File path, URL, or document ID to resume
             title: Optional title (will be extracted if not provided)
+            on_stage_update: Optional callback(stage_name, status) for UI updates
 
         Returns:
             Dictionary with processing results:
@@ -290,7 +307,10 @@ class IngestionOrchestrator:
         try:
             # Execute pipeline
             logger.info(f"Starting pipeline for document {document_id}")
-            final_context = await pipeline.execute(context)
+            final_context = await pipeline.execute(
+                context,
+                on_stage_update=on_stage_update,
+            )
 
             # Check completion status
             if self.enable_database_persistence:

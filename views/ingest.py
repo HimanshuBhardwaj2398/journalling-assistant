@@ -5,11 +5,13 @@ Provides UI for adding new meditation texts to the database.
 """
 
 import tempfile
+import time
 from pathlib import Path
 
 import streamlit as st
 
 from core.exceptions import DuplicateDocumentError
+from core.interfaces import StageStatus
 from services.ingestion_service import ingest_document
 from db.database import session_scope
 from db.crud import get_all_collections
@@ -144,7 +146,52 @@ def render():
         elif not collection_name:
             st.error("Please select or create a collection")
         else:
-            with st.spinner("Processing document... This may take a few minutes."):
+            with st.status("Processing document...", expanded=True) as status_container:
+                stage_names = ["parsing", "chunking", "embedding", "database_persistence"]
+                stage_labels = {
+                    "parsing": "Parsing",
+                    "chunking": "Chunking",
+                    "embedding": "Embedding",
+                    "database_persistence": "Persistence",
+                }
+                stage_placeholders = {}
+                for stage_name in stage_names:
+                    stage_placeholders[stage_name] = st.empty()
+                    stage_placeholders[stage_name].markdown(
+                        f"⏳ **{stage_labels[stage_name]}** - Pending"
+                    )
+
+                log_placeholder = st.empty()
+                log_lines = []
+                stage_start_times = {}
+
+                def on_stage_update(stage_name, stage_status):
+                    label = stage_labels.get(stage_name, stage_name.replace("_", " ").title())
+
+                    if stage_name not in stage_placeholders:
+                        stage_placeholders[stage_name] = st.empty()
+
+                    if stage_status == StageStatus.RUNNING:
+                        stage_start_times[stage_name] = time.time()
+                        stage_placeholders[stage_name].markdown(
+                            f"🔄 **{label}** - Running..."
+                        )
+                        log_lines.append(f"[{label}] Started")
+                    elif stage_status == StageStatus.COMPLETED:
+                        elapsed = time.time() - stage_start_times.get(stage_name, time.time())
+                        stage_placeholders[stage_name].markdown(
+                            f"✅ **{label}** - Complete ({elapsed:.1f}s)"
+                        )
+                        log_lines.append(f"[{label}] Completed in {elapsed:.1f}s")
+                    elif stage_status == StageStatus.FAILED:
+                        elapsed = time.time() - stage_start_times.get(stage_name, time.time())
+                        stage_placeholders[stage_name].markdown(
+                            f"❌ **{label}** - Failed ({elapsed:.1f}s)"
+                        )
+                        log_lines.append(f"[{label}] FAILED after {elapsed:.1f}s")
+
+                    log_placeholder.code("\n".join(log_lines), language="text")
+
                 try:
                     # Handle uploaded file by saving to temp location
                     if uploaded_file is not None:
@@ -161,14 +208,22 @@ def render():
                         category=category,
                         tags=tags,
                         collection_name=collection_name,
+                        on_stage_update=on_stage_update,
                     )
                     st.session_state.ingestion_result = result
                     # Clear collections cache so new collection appears
                     st.session_state.pop("collections_cache", None)
+
+                    if result.get("success"):
+                        status_container.update(label="Processing complete!", state="complete")
+                    else:
+                        status_container.update(label="Processing failed", state="error")
                 except DuplicateDocumentError as e:
+                    status_container.update(label="Duplicate document", state="error")
                     st.error("Duplicate Document Detected")
                     st.warning(str(e))
                 except Exception as e:
+                    status_container.update(label="Processing failed", state="error")
                     st.error(f"Ingestion failed: {str(e)}")
 
     # Show results

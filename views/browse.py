@@ -14,6 +14,11 @@ from services.collection_service import CollectionService
 
 def render():
     """Render the browse database page."""
+    if st.session_state.get("selected_doc_id"):
+        from views.document_detail import render as render_detail
+        render_detail(st.session_state.selected_doc_id)
+        return
+
     st.header("Browse Database")
 
     # Filters
@@ -60,6 +65,10 @@ def render():
 def _render_document_card(doc, session):
     """Render a single document card with details and actions."""
     with st.expander(f"**[{doc.id}] {doc.title}**", expanded=False):
+        if st.button("Open Document Detail ->", key=f"detail_{doc.id}"):
+            st.session_state.selected_doc_id = doc.id
+            st.rerun()
+
         col1, col2 = st.columns([2, 1])
 
         with col1:
@@ -81,15 +90,12 @@ def _render_document_card(doc, session):
             st.write(f"**Created:** {doc.created_at.strftime('%Y-%m-%d')}")
             st.write(f"**Updated:** {doc.updated_at.strftime('%Y-%m-%d')}")
 
-        # Show chunk preview
+        # Show chunk inspector
         if doc.document_chunks:
-            with st.expander("Preview Chunks"):
-                for i, chunk in enumerate(doc.document_chunks[:3]):
-                    st.markdown(f"**Chunk {i}** ({len(chunk.chunk_text)} chars)")
-                    st.text(chunk.chunk_text[:200] + "...")
-
-                if len(doc.document_chunks) > 3:
-                    st.caption(f"... and {len(doc.document_chunks) - 3} more chunks")
+            sorted_chunks = sorted(doc.document_chunks, key=lambda c: c.chunk_index)
+            with st.expander(f"Chunk Inspector ({len(sorted_chunks)} chunks)"):
+                from views.components.chunk_inspector import render_chunk_inspector
+                render_chunk_inspector(sorted_chunks, key_prefix=f"browse_{doc.id}")
 
         # Actions section
         st.markdown("---")

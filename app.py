@@ -40,9 +40,6 @@ if "processing_status" not in st.session_state:
 if "last_processed_id" not in st.session_state:
     st.session_state.last_processed_id = None
 
-if "delete_confirm" not in st.session_state:
-    st.session_state.delete_confirm = None
-
 # Sidebar navigation
 with st.sidebar:
     st.title("Meditation Database")
