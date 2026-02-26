@@ -10,6 +10,7 @@ Usage:
     python scripts/ingest.py https://example.com/article
     python scripts/ingest.py path/to/document.pdf --title "Dhammapada"
     python scripts/ingest.py --resume 123  # Resume failed document
+    python scripts/ingest.py --reprocess 123 --reprocess-mode from_chunking
 
 Examples:
     # Ingest a Wikipedia article
@@ -20,6 +21,12 @@ Examples:
 
     # Resume a failed ingestion
     python scripts/ingest.py --resume 5
+
+    # Reprocess existing document from stored markdown
+    python scripts/ingest.py --reprocess 5 --reprocess-mode from_chunking
+
+    # Reprocess existing document from parsing and clear old markdown first
+    python scripts/ingest.py --reprocess 5 --reprocess-mode full --clear-markdown
 
     # Batch ingest multiple sources
     python scripts/ingest.py url1 url2 path/to/file.pdf
@@ -39,11 +46,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv()
 
-from ingestion.orchestrator import IngestionOrchestrator
+from ingestion.orchestrator import IngestionOrchestrator, ReprocessMode
 from ingestion.embed import VectorStoreConfig
 from db.database import session_scope
 from db.crud import DocumentCRUD
-from db.schema import DocumentStatus
 
 # Setup logging
 logging.basicConfig(
@@ -111,7 +117,9 @@ async def ingest_document(
     orchestrator: IngestionOrchestrator,
     source: str,
     title: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    reprocess_mode: Optional[str] = None,
+    clear_markdown: bool = False,
 ) -> dict:
     """
     Ingest a single document.
@@ -121,6 +129,8 @@ async def ingest_document(
         source: URL, file path, or document ID to resume
         title: Optional custom title
         verbose: Print detailed progress
+        reprocess_mode: Optional mode for reprocessing existing docs
+        clear_markdown: Clear stored markdown before reprocessing (full mode only)
 
     Returns:
         Result dictionary with ingestion details
@@ -133,9 +143,19 @@ async def ingest_document(
         doc_id = int(source)
         if verbose:
             print(f"Resuming document ID: {doc_id}\n")
-        result = await orchestrator.process(source=doc_id, title=title)
+        result = await orchestrator.process(
+            source=doc_id,
+            title=title,
+            reprocess_mode=reprocess_mode,
+            clear_markdown=clear_markdown,
+        )
     except ValueError:
         # It's a file path or URL
+        if reprocess_mode:
+            raise ValueError(
+                "reprocess_mode can only be used with an existing document ID"
+            )
+
         if verbose:
             # Extract title from filename if not provided
             if not title:
@@ -160,6 +180,8 @@ async def ingest_batch(
     titles: Optional[List[str]] = None,
     verbose: bool = True,
     collection_name: str = "meditation_chunks",
+    reprocess_mode: Optional[str] = None,
+    clear_markdown: bool = False,
 ) -> List[dict]:
     """
     Ingest multiple documents.
@@ -169,6 +191,8 @@ async def ingest_batch(
         titles: Optional list of custom titles (must match sources length)
         verbose: Print detailed progress
         collection_name: Name of the collection to store embeddings in
+        reprocess_mode: Optional mode for reprocessing existing docs
+        clear_markdown: Clear stored markdown before reprocessing (full mode only)
 
     Returns:
         List of result dictionaries
@@ -190,7 +214,14 @@ async def ingest_batch(
             print(f"\n📄 Processing document {i+1}/{len(sources)}")
 
         try:
-            result = await ingest_document(orchestrator, source, title, verbose)
+            result = await ingest_document(
+                orchestrator,
+                source,
+                title,
+                verbose,
+                reprocess_mode=reprocess_mode,
+                clear_markdown=clear_markdown,
+            )
             results.append(result)
         except Exception as e:
             logger.error(f"Failed to process {source}: {e}")
@@ -290,6 +321,28 @@ def main():
     )
 
     parser.add_argument(
+        "--reprocess",
+        type=int,
+        help="Reprocess an existing document ID while keeping the same ID"
+    )
+
+    parser.add_argument(
+        "--reprocess-mode",
+        choices=[mode.value for mode in ReprocessMode],
+        default=ReprocessMode.FULL.value,
+        help=(
+            "Reprocess mode for --reprocess: "
+            "full | from_chunking | from_embedding (default: full)"
+        ),
+    )
+
+    parser.add_argument(
+        "--clear-markdown",
+        action="store_true",
+        help="Clear existing markdown before reprocessing (only valid with --reprocess-mode full)",
+    )
+
+    parser.add_argument(
         "--list", "-l",
         action="store_true",
         help="List all documents in the database"
@@ -315,6 +368,13 @@ def main():
 
     args = parser.parse_args()
 
+    if args.resume and args.reprocess:
+        parser.error("Use either --resume or --reprocess, not both")
+    if args.clear_markdown and not args.reprocess:
+        parser.error("--clear-markdown requires --reprocess")
+    if args.clear_markdown and args.reprocess_mode != ReprocessMode.FULL.value:
+        parser.error("--clear-markdown is only valid with --reprocess-mode full")
+
     # Setup logging level
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -334,6 +394,20 @@ def main():
                 titles=[args.title],
                 verbose=not args.quiet,
                 collection_name=args.collection,
+            )
+        )
+        sys.exit(0 if result[0]["success"] else 1)
+
+    # Reprocess existing document
+    if args.reprocess:
+        result = asyncio.run(
+            ingest_batch(
+                [str(args.reprocess)],
+                titles=[args.title],
+                verbose=not args.quiet,
+                collection_name=args.collection,
+                reprocess_mode=args.reprocess_mode,
+                clear_markdown=args.clear_markdown,
             )
         )
         sys.exit(0 if result[0]["success"] else 1)

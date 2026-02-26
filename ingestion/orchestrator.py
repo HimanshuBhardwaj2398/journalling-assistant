@@ -6,10 +6,11 @@ Replaces linear state machine with dependency-aware stage execution.
 
 import logging
 import os
+from enum import Enum
 from typing import Union, List, Dict, Any, Optional, Callable
 
 from core.interfaces import PipelineStage, PipelineContext, StageStatus
-from core.exceptions import PipelineError, DatabaseError, DocumentNotFoundError
+from core.exceptions import PipelineError, DocumentNotFoundError
 from ingestion.parsing import ParserFactory
 from ingestion.chunking import Config as ChunkingConfig
 from ingestion.embed import VectorStoreManager, VectorStoreConfig
@@ -39,6 +40,18 @@ def deserialize_docs(serialized_docs: List[Dict[str, Any]]) -> List[LangchainDoc
         LangchainDocument(page_content=doc["page_content"], metadata=doc["metadata"])
         for doc in serialized_docs
     ]
+
+
+# ============================================================================
+# REPROCESS MODES
+# ============================================================================
+
+class ReprocessMode(str, Enum):
+    """Supported reprocessing entry points for existing documents."""
+
+    FULL = "full"
+    FROM_CHUNKING = "from_chunking"
+    FROM_EMBEDDING = "from_embedding"
 
 
 # ============================================================================
@@ -232,11 +245,30 @@ class IngestionOrchestrator:
 
         logger.info("IngestionOrchestrator initialized with DAG pipeline")
 
+    @staticmethod
+    def _parse_reprocess_mode(
+        reprocess_mode: Optional[Union[ReprocessMode, str]],
+    ) -> Optional[ReprocessMode]:
+        """Normalize and validate optional reprocess mode."""
+        if reprocess_mode is None:
+            return None
+        if isinstance(reprocess_mode, ReprocessMode):
+            return reprocess_mode
+        try:
+            return ReprocessMode(reprocess_mode)
+        except ValueError as e:
+            allowed = ", ".join(mode.value for mode in ReprocessMode)
+            raise PipelineError(
+                f"Invalid reprocess_mode '{reprocess_mode}'. Allowed values: {allowed}"
+            ) from e
+
     async def process(
         self,
         source: Union[str, int],
         title: Optional[str] = None,
         on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
+        reprocess_mode: Optional[Union[ReprocessMode, str]] = None,
+        clear_markdown: bool = False,
     ) -> Dict[str, Any]:
         """
         Process a document through the ingestion pipeline.
@@ -245,6 +277,14 @@ class IngestionOrchestrator:
             source: File path, URL, or document ID to resume
             title: Optional title (will be extracted if not provided)
             on_stage_update: Optional callback(stage_name, status) for UI updates
+            reprocess_mode: Optional mode for existing documents:
+                - "full": re-parse + chunk + embed + persist
+                - "from_chunking": reuse stored markdown, rerun chunking+
+                  embedding+persistence
+                - "from_embedding": reuse stored chunks, rerun embedding+
+                  persistence
+            clear_markdown: When reprocessing existing docs, clear
+                documents.markdown before pipeline execution.
 
         Returns:
             Dictionary with processing results:
@@ -257,22 +297,133 @@ class IngestionOrchestrator:
                 - success: Whether pipeline completed successfully
         """
         from db.database import session_scope
-        from db.crud import DocumentCRUD
+        from db.crud import DocumentCRUD, ChunkCRUD
         from db.schema import DocumentStatus
+
+        mode = self._parse_reprocess_mode(reprocess_mode)
+        if clear_markdown and mode != ReprocessMode.FULL:
+            raise PipelineError(
+                "clear_markdown is only supported with reprocess_mode='full'"
+            )
 
         # Create or load document
         document_id = None
+        seeded_parsed_content: Optional[str] = None
+        seeded_chunks: List[LangchainDocument] = []
+        seeded_stage_results: Dict[str, StageStatus] = {}
+
         if isinstance(source, int):
             # Resume existing document
+            chunk_uuids: List[str] = []
             with session_scope() as session:
-                doc = DocumentCRUD(session).get_document_by_id(source)
+                doc_crud = DocumentCRUD(session)
+                chunk_crud = ChunkCRUD(session)
+
+                doc = doc_crud.get_document_by_id(source)
                 if not doc:
                     raise DocumentNotFoundError(f"Document {source} not found")
+
                 source = doc.file_path
-                title = doc.title
+                title = title or doc.title
                 document_id = doc.id
+                existing_markdown = doc.markdown
+                existing_doc_metadata = dict(doc.doc_metadata or {})
+
+                existing_chunks = chunk_crud.get_chunks_by_document(document_id)
+                chunk_uuids = [chunk.uuid for chunk in existing_chunks]
+
+                if mode == ReprocessMode.FROM_CHUNKING:
+                    if not existing_markdown:
+                        raise PipelineError(
+                            f"Document {document_id} has no stored markdown; "
+                            "cannot start from chunking"
+                        )
+                    seeded_parsed_content = existing_markdown
+                    seeded_stage_results = {"parsing": StageStatus.COMPLETED}
+                elif mode == ReprocessMode.FROM_EMBEDDING:
+                    if not existing_chunks:
+                        raise PipelineError(
+                            f"Document {document_id} has no stored chunks; "
+                            "cannot start from embedding"
+                        )
+                    seeded_stage_results = {
+                        "parsing": StageStatus.COMPLETED,
+                        "chunking": StageStatus.COMPLETED,
+                    }
+                    for chunk_row in existing_chunks:
+                        metadata = dict(chunk_row.chunk_metadata or {})
+                        metadata["uuid"] = chunk_row.uuid
+                        seeded_chunks.append(
+                            LangchainDocument(
+                                page_content=chunk_row.chunk_text,
+                                metadata=metadata,
+                            )
+                        )
+
+                if mode == ReprocessMode.FULL and not source:
+                    raise PipelineError(
+                        f"Document {document_id} is missing file_path; "
+                        "cannot reprocess from parsing"
+                    )
+
+            if mode is not None:
+                if chunk_uuids:
+                    try:
+                        deleted_embeddings = self.vector_store_manager.delete_by_ids(
+                            chunk_uuids
+                        )
+                        logger.info(
+                            "Deleted %s existing embeddings for document %s",
+                            deleted_embeddings,
+                            document_id,
+                        )
+                    except Exception as e:
+                        raise PipelineError(
+                            f"Failed to clear existing embeddings for document "
+                            f"{document_id}: {e}"
+                        ) from e
+
+                with session_scope() as session:
+                    doc_crud = DocumentCRUD(session)
+                    chunk_crud = ChunkCRUD(session)
+                    doc = doc_crud.get_document_by_id(document_id)
+                    if not doc:
+                        raise DocumentNotFoundError(f"Document {document_id} not found")
+
+                    deleted_chunks = chunk_crud.delete_chunks_by_document(document_id)
+                    logger.info(
+                        "Deleted %s existing chunk rows for document %s",
+                        deleted_chunks,
+                        document_id,
+                    )
+
+                    doc.chunks = None
+                    if clear_markdown:
+                        doc.markdown = None
+
+                    # Remove stale derived metadata before rerun.
+                    if existing_doc_metadata.pop("table_of_contents", None) is not None:
+                        doc.doc_metadata = existing_doc_metadata
+
+                    doc.status = DocumentStatus.PENDING
+                    doc.status_details = (
+                        f"Reprocessing ({mode.value}) - pipeline rerun requested"
+                    )
+                    session.commit()
+
+                logger.info(
+                    "Reprocessing document %s (%s, clear_markdown=%s)",
+                    document_id,
+                    mode.value,
+                    clear_markdown,
+                )
+            else:
                 logger.info(f"Resuming document {document_id}: {title}")
         else:
+            if mode is not None:
+                raise PipelineError(
+                    "reprocess_mode can only be used when source is an existing document ID"
+                )
             # Create new document
             with session_scope() as session:
                 doc = DocumentCRUD(session).create_document(
@@ -282,6 +433,64 @@ class IngestionOrchestrator:
                 )
                 document_id = doc.id
                 logger.info(f"Created document {document_id} for source: {source}")
+
+        stage_running_status = {
+            "parsing": DocumentStatus.PARSING,
+            "chunking": DocumentStatus.CHUNKING,
+            "embedding": DocumentStatus.EMBEDDING,
+            # No dedicated persistence enum; keep this under embedding phase.
+            "database_persistence": DocumentStatus.EMBEDDING,
+        }
+        stage_completed_status = {
+            "parsing": DocumentStatus.PARSED,
+            "chunking": DocumentStatus.CHUNKED,
+            # Keep EMBEDDING until database persistence marks COMPLETED.
+            "embedding": DocumentStatus.EMBEDDING,
+        }
+
+        def _persist_stage_status(stage_name: str, stage_status: StageStatus) -> None:
+            """Mirror pipeline stage transitions into document.status for visibility."""
+            if not document_id:
+                return
+
+            mapped_status: Optional[DocumentStatus] = None
+            if stage_status == StageStatus.RUNNING:
+                mapped_status = stage_running_status.get(stage_name)
+            elif stage_status == StageStatus.COMPLETED:
+                mapped_status = stage_completed_status.get(stage_name)
+            elif stage_status == StageStatus.FAILED:
+                mapped_status = DocumentStatus.FAILED
+
+            if mapped_status is None:
+                return
+
+            try:
+                with session_scope() as session:
+                    DocumentCRUD(session).update_status(
+                        document_id=document_id,
+                        status=mapped_status,
+                        status_details=f"Stage '{stage_name}' {stage_status.value}",
+                    )
+                logger.info(
+                    "Document %s status -> %s (%s: %s)",
+                    document_id,
+                    mapped_status.value,
+                    stage_name,
+                    stage_status.value,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to persist stage status for document %s (%s=%s): %s",
+                    document_id,
+                    stage_name,
+                    stage_status.value,
+                    e,
+                )
+
+        def _on_stage_update(stage_name: str, stage_status: StageStatus) -> None:
+            _persist_stage_status(stage_name, stage_status)
+            if on_stage_update is not None:
+                on_stage_update(stage_name, stage_status)
 
         # Build pipeline stages
         stages = [
@@ -302,6 +511,9 @@ class IngestionOrchestrator:
             document_id=document_id,
             source=source,
             title=title,
+            parsed_content=seeded_parsed_content,
+            chunks=seeded_chunks,
+            stage_results=seeded_stage_results,
         )
 
         try:
@@ -309,7 +521,7 @@ class IngestionOrchestrator:
             logger.info(f"Starting pipeline for document {document_id}")
             final_context = await pipeline.execute(
                 context,
-                on_stage_update=on_stage_update,
+                on_stage_update=_on_stage_update,
             )
 
             # Check completion status
@@ -327,6 +539,7 @@ class IngestionOrchestrator:
                 "source": source,
                 "title": final_context.title,
                 "chunk_count": len(final_context.chunks) if final_context.chunks else 0,
+                "reprocess_mode": mode.value if mode else None,
                 "stage_results": {
                     name: status.value
                     for name, status in final_context.stage_results.items()

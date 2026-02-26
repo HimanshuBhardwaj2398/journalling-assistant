@@ -141,6 +141,8 @@ async def process_document_by_id_async(
     doc_id: int,
     collection_name: str = "meditation_chunks",
     on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
+    reprocess_mode: Optional[str] = None,
+    clear_markdown: bool = False,
 ) -> dict:
     """
     Process/resume a document by its ID.
@@ -148,12 +150,19 @@ async def process_document_by_id_async(
     Args:
         doc_id: Database ID of the document to process
         collection_name: Name of the vector store collection
+        reprocess_mode: Optional reprocessing mode for existing docs
+        clear_markdown: Clear stored markdown before reprocessing (full mode only)
 
     Returns:
         dict: Result from orchestrator
     """
     orchestrator = get_orchestrator(collection_name)
-    result = await orchestrator.process(source=doc_id, on_stage_update=on_stage_update)
+    result = await orchestrator.process(
+        source=doc_id,
+        on_stage_update=on_stage_update,
+        reprocess_mode=reprocess_mode,
+        clear_markdown=clear_markdown,
+    )
     return result
 
 
@@ -161,6 +170,8 @@ def process_document_by_id(
     doc_id: int,
     collection_name: str = "meditation_chunks",
     on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
+    reprocess_mode: Optional[str] = None,
+    clear_markdown: bool = False,
 ) -> dict:
     """Synchronous wrapper for async document processing."""
     return asyncio.run(
@@ -168,5 +179,7 @@ def process_document_by_id(
             doc_id,
             collection_name,
             on_stage_update=on_stage_update,
+            reprocess_mode=reprocess_mode,
+            clear_markdown=clear_markdown,
         )
     )

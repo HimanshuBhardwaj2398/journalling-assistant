@@ -352,7 +352,10 @@ class CollectionService:
                     db_url=self.db_url,
                 )
             )
-            result = await orchestrator.process(source=document_id)
+            result = await orchestrator.process(
+                source=document_id,
+                reprocess_mode="from_chunking",
+            )
 
             new_chunk_count = result.get("chunk_count", 0)
             logger.info(
