@@ -4,6 +4,7 @@ New code should use: from config.settings import get_settings
 
 This module re-exports commonly used configuration values.
 """
+
 from config.settings import get_settings
 
 # Get the settings instance

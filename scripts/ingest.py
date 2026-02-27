@@ -44,26 +44,26 @@ from typing import List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from ingestion.orchestrator import IngestionOrchestrator, ReprocessMode
-from ingestion.embed import VectorStoreConfig
-from db.database import session_scope
 from db.crud import DocumentCRUD
+from db.database import session_scope
+from ingestion.embed import VectorStoreConfig
+from ingestion.orchestrator import IngestionOrchestrator, ReprocessMode
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 def print_header():
     """Print CLI header."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("MEDITATION DATABASE - DOCUMENT INGESTION")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 def print_document_info(doc_id: int, source: str, title: str):
@@ -71,26 +71,21 @@ def print_document_info(doc_id: int, source: str, title: str):
     print(f"Document ID: {doc_id}")
     print(f"Source: {source}")
     print(f"Title: {title}")
-    print("-"*70)
+    print("-" * 70)
 
 
 def print_stage_progress(stage_name: str, status: str):
     """Print stage progress."""
-    icons = {
-        "completed": "✓",
-        "failed": "✗",
-        "running": "⟳",
-        "skipped": "⊘"
-    }
+    icons = {"completed": "✓", "failed": "✗", "running": "⟳", "skipped": "⊘"}
     icon = icons.get(status, "•")
     print(f"{icon} {stage_name.replace('_', ' ').title()}: {status}")
 
 
 def print_results(result: dict, verbose: bool = True):
     """Print ingestion results."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("INGESTION RESULTS")
-    print("="*70)
+    print("=" * 70)
 
     # Basic info
     print(f"\nDocument ID: {result['document_id']}")
@@ -101,16 +96,16 @@ def print_results(result: dict, verbose: bool = True):
     # Stage results
     if verbose:
         print("\nPipeline Stages:")
-        for stage_name, status in result['stage_results'].items():
+        for stage_name, status in result["stage_results"].items():
             print_stage_progress(stage_name, status)
 
     # Errors
-    if result['errors']:
+    if result["errors"]:
         print("\n⚠️  Errors:")
-        for stage, error in result['errors'].items():
+        for stage, error in result["errors"].items():
             print(f"  - {stage}: {error}")
 
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 async def ingest_document(
@@ -152,14 +147,12 @@ async def ingest_document(
     except ValueError:
         # It's a file path or URL
         if reprocess_mode:
-            raise ValueError(
-                "reprocess_mode can only be used with an existing document ID"
-            )
+            raise ValueError("reprocess_mode can only be used with an existing document ID")
 
         if verbose:
             # Extract title from filename if not provided
             if not title:
-                if source.startswith(('http://', 'https://')):
+                if source.startswith(("http://", "https://")):
                     title = f"Web: {source[:50]}..."
                 else:
                     title = Path(source).stem
@@ -211,7 +204,7 @@ async def ingest_batch(
 
     for i, (source, title) in enumerate(zip(sources, titles)):
         if len(sources) > 1:
-            print(f"\n📄 Processing document {i+1}/{len(sources)}")
+            print(f"\n📄 Processing document {i + 1}/{len(sources)}")
 
         try:
             result = await ingest_document(
@@ -225,20 +218,16 @@ async def ingest_batch(
             results.append(result)
         except Exception as e:
             logger.error(f"Failed to process {source}: {e}")
-            results.append({
-                "source": source,
-                "success": False,
-                "error": str(e)
-            })
+            results.append({"source": source, "success": False, "error": str(e)})
 
     return results
 
 
 def print_batch_summary(results: List[dict]):
     """Print summary of batch ingestion."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("BATCH INGESTION SUMMARY")
-    print("="*70)
+    print("=" * 70)
 
     total = len(results)
     successful = sum(1 for r in results if r.get("success", False))
@@ -260,14 +249,14 @@ def print_batch_summary(results: List[dict]):
     total_chunks = sum(r.get("chunk_count", 0) for r in results)
     print(f"\nTotal chunks created: {total_chunks}")
 
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 def list_documents():
     """List all documents in the database."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("DOCUMENTS IN DATABASE")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
     with session_scope() as session:
         crud = DocumentCRUD(session)
@@ -292,7 +281,7 @@ def list_documents():
             print(f"    Chunks: {len(doc.document_chunks)}")
             print()
 
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 def main():
@@ -300,30 +289,21 @@ def main():
     parser = argparse.ArgumentParser(
         description="Ingest meditation texts into the database",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     parser.add_argument(
-        "sources",
-        nargs="*",
-        help="URL(s), PDF path(s), or document ID(s) to ingest"
+        "sources", nargs="*", help="URL(s), PDF path(s), or document ID(s) to ingest"
+    )
+
+    parser.add_argument("--title", "-t", help="Custom title for the document")
+
+    parser.add_argument(
+        "--resume", "-r", type=int, help="Resume ingestion for a specific document ID"
     )
 
     parser.add_argument(
-        "--title", "-t",
-        help="Custom title for the document"
-    )
-
-    parser.add_argument(
-        "--resume", "-r",
-        type=int,
-        help="Resume ingestion for a specific document ID"
-    )
-
-    parser.add_argument(
-        "--reprocess",
-        type=int,
-        help="Reprocess an existing document ID while keeping the same ID"
+        "--reprocess", type=int, help="Reprocess an existing document ID while keeping the same ID"
     )
 
     parser.add_argument(
@@ -331,8 +311,7 @@ def main():
         choices=[mode.value for mode in ReprocessMode],
         default=ReprocessMode.FULL.value,
         help=(
-            "Reprocess mode for --reprocess: "
-            "full | from_chunking | from_embedding (default: full)"
+            "Reprocess mode for --reprocess: full | from_chunking | from_embedding (default: full)"
         ),
     )
 
@@ -343,27 +322,18 @@ def main():
     )
 
     parser.add_argument(
-        "--list", "-l",
-        action="store_true",
-        help="List all documents in the database"
+        "--list", "-l", action="store_true", help="List all documents in the database"
     )
 
-    parser.add_argument(
-        "--quiet", "-q",
-        action="store_true",
-        help="Suppress detailed output"
-    )
+    parser.add_argument("--quiet", "-q", action="store_true", help="Suppress detailed output")
+
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
-    )
-
-    parser.add_argument(
-        "--collection", "-c",
+        "--collection",
+        "-c",
         default="meditation_chunks",
-        help="Collection name for storing embeddings (default: meditation_chunks)"
+        help="Collection name for storing embeddings (default: meditation_chunks)",
     )
 
     args = parser.parse_args()

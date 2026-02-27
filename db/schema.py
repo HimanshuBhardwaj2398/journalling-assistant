@@ -1,23 +1,21 @@
 # file: models.py
 
-import os
-from sqlalchemy import (
-    create_engine,
-    Column,
-    Text,
-    DateTime,
-    BigInteger,  # Use BigInteger to match PostgreSQL's BIGSERIAL
-    ForeignKey,
-    Integer,
-    Enum,
-)
-from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.sql import func  # To use SQL functions like NOW()
-from pgvector.sqlalchemy import Vector
 import enum  # For Enum type
 
+from sqlalchemy import (
+    BigInteger,  # Use BigInteger to match PostgreSQL's BIGSERIAL
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Text,
+)
+
 # Import PostgreSQL-specific types
-from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.sql import func  # To use SQL functions like NOW()
 
 # --- Step 1: Set up the Base Class ---
 # All our ORM models will inherit from this class.
@@ -80,9 +78,7 @@ class Document(Base):
     )
 
     # Timestamps
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -149,9 +145,7 @@ class Chunk(Base):
     )
 
     # Timestamps
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
     parent_document = relationship("Document", back_populates="document_chunks")

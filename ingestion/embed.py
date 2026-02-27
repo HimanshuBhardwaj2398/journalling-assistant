@@ -5,19 +5,16 @@ This module provides utilities for creating vector stores, embedding documents,
 and managing the connection to PostgreSQL with pgvector extension.
 """
 
-import os
 import logging
-from typing import List, Optional, Dict, Any, Union
+import os
 from dataclasses import dataclass
-from contextlib import contextmanager
+from typing import Any, Dict, List, Optional
 
-from psycopg2 import errors as pg_errors
 from langchain_community.vectorstores.pgvector import PGVector
-from langchain_voyageai import VoyageAIEmbeddings
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
-from langchain_core.vectorstores import VectorStore
-
+from langchain_voyageai import VoyageAIEmbeddings
+from psycopg2 import errors as pg_errors
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -88,9 +85,7 @@ class VectorStoreManager:
         if self._embeddings is None:
             try:
                 self._embeddings = VoyageAIEmbeddings(model=self.config.model_name)
-                logger.info(
-                    f"Initialized embeddings with model: {self.config.model_name}"
-                )
+                logger.info(f"Initialized embeddings with model: {self.config.model_name}")
             except Exception as e:
                 raise EmbeddingError(f"Failed to initialize embeddings: {e}") from e
 
@@ -124,13 +119,13 @@ class VectorStoreManager:
                 use_jsonb=self.config.use_jsonb,
             )
 
-            logger.info(
-                f"Connected to vector store collection: {self.config.collection_name}"
-            )
+            logger.info(f"Connected to vector store collection: {self.config.collection_name}")
             return vector_store
 
         except pg_errors.InvalidCatalogName as e:
-            error_msg = f"Database '{self.config.collection_name}' not found. Check connection string."
+            error_msg = (
+                f"Database '{self.config.collection_name}' not found. Check connection string."
+            )
             logger.error(error_msg)
             raise DatabaseConnectionError(error_msg) from e
 
@@ -176,20 +171,14 @@ class VectorStoreManager:
         all_ids = []
         total_docs = len(documents)
 
-        logger.info(
-            f"Processing {total_docs} documents in batches of {self.config.batch_size}"
-        )
+        logger.info(f"Processing {total_docs} documents in batches of {self.config.batch_size}")
 
         for i in range(0, total_docs, self.config.batch_size):
             batch = documents[i : i + self.config.batch_size]
             batch_num = (i // self.config.batch_size) + 1
-            total_batches = (
-                total_docs + self.config.batch_size - 1
-            ) // self.config.batch_size
+            total_batches = (total_docs + self.config.batch_size - 1) // self.config.batch_size
 
-            logger.info(
-                f"Processing batch {batch_num}/{total_batches} ({len(batch)} documents)"
-            )
+            logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} documents)")
 
             try:
                 batch_ids = self.vector_store.add_documents(batch)
@@ -205,9 +194,7 @@ class VectorStoreManager:
 
             except Exception as e:
                 logger.error(f"Failed to process batch {batch_num}: {e}")
-                raise EmbeddingError(
-                    f"Batch {batch_num}/{total_batches} failed: {e}"
-                ) from e
+                raise EmbeddingError(f"Batch {batch_num}/{total_batches} failed: {e}") from e
 
         logger.info(
             f"Completed processing: {len(all_ids)}/{total_docs} documents successfully stored"
@@ -256,9 +243,7 @@ class VectorStoreManager:
             logger.error(error_msg)
             raise VectorStoreError(error_msg) from e
 
-    def delete_by_metadata_filter(
-        self, filter: Dict[str, Any]
-    ) -> bool:
+    def delete_by_metadata_filter(self, filter: Dict[str, Any]) -> bool:
         """
         Delete embeddings matching a metadata filter.
 

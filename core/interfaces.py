@@ -7,15 +7,15 @@ and ABC (abstract base classes) for key components of the ingestion pipeline.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Protocol, Optional, List, Dict, Any
 from enum import Enum
+from typing import Any, Dict, List, Optional, Protocol
 
 from langchain.schema import Document as LangchainDocument
-
 
 # ============================================================================
 # PARSING INTERFACES
 # ============================================================================
+
 
 @dataclass
 class ParseResult:
@@ -27,6 +27,7 @@ class ParseResult:
         title: Extracted document title (optional)
         metadata: Additional metadata extracted during parsing
     """
+
     content: str
     title: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -72,8 +73,10 @@ class Parser(Protocol):
 # PIPELINE INTERFACES
 # ============================================================================
 
+
 class StageStatus(Enum):
     """Status of a pipeline stage execution."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -98,6 +101,7 @@ class PipelineContext:
         stage_results: Execution status of each stage
         error_messages: Error messages from failed stages
     """
+
     # Source information
     document_id: Optional[int] = None
     source: Optional[str] = None
@@ -130,6 +134,7 @@ class PipelineContext:
             new_ctx = ctx.with_update(title="New Title", parsed_content="...")
         """
         from dataclasses import replace
+
         return replace(self, **kwargs)
 
     def mark_stage_completed(self, stage_name: str) -> "PipelineContext":

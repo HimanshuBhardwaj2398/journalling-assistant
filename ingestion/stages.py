@@ -9,11 +9,12 @@ import logging
 import uuid as uuid_lib
 from typing import List
 
-from core.interfaces import PipelineStage, PipelineContext, StageStatus
-from core.exceptions import ParsingError, ChunkingError, EmbeddingError, DatabaseError
-from ingestion.parsing import ParserFactory
-from ingestion.chunking import MarkdownChunker, Config as ChunkingConfig
+from core.exceptions import ChunkingError, DatabaseError, EmbeddingError, ParsingError
+from core.interfaces import PipelineContext, PipelineStage
+from ingestion.chunking import Config as ChunkingConfig
+from ingestion.chunking import MarkdownChunker
 from ingestion.embed import VectorStoreManager
+from ingestion.parsing import ParserFactory
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # STAGE 1: PARSING
 # ============================================================================
+
 
 class ParsingStage(PipelineStage):
     """
@@ -61,8 +63,8 @@ class ParsingStage(PipelineStage):
         Raises:
             ParsingError: If parsing fails
         """
-        from db.database import session_scope
         from db.crud import DocumentCRUD
+        from db.database import session_scope
 
         if not context.source:
             raise ParsingError("No source provided in context")
@@ -86,8 +88,7 @@ class ParsingStage(PipelineStage):
 
             # Update context with parsed results
             return context.with_update(
-                parsed_content=result.content,
-                title=result.title or "Untitled"
+                parsed_content=result.content, title=result.title or "Untitled"
             ).mark_stage_completed(self.name)
 
         except ParsingError as e:
@@ -101,6 +102,7 @@ class ParsingStage(PipelineStage):
 # ============================================================================
 # STAGE 2: CHUNKING
 # ============================================================================
+
 
 class ChunkingStage(PipelineStage):
     """
@@ -148,9 +150,7 @@ class ChunkingStage(PipelineStage):
 
         try:
             chunker = MarkdownChunker(
-                text=context.parsed_content,
-                config=self.chunking_config,
-                title=context.title
+                text=context.parsed_content, config=self.chunking_config, title=context.title
             )
 
             chunks, stats = await chunker.chunk()
@@ -160,9 +160,7 @@ class ChunkingStage(PipelineStage):
                 f"{stats.processing_time:.2f}s (avg {stats.avg_chunk_size:.0f} words)"
             )
 
-            return context.with_update(
-                chunks=chunks
-            ).mark_stage_completed(self.name)
+            return context.with_update(chunks=chunks).mark_stage_completed(self.name)
 
         except ChunkingError as e:
             logger.error(f"Chunking failed: {e}")
@@ -175,6 +173,7 @@ class ChunkingStage(PipelineStage):
 # ============================================================================
 # STAGE 3: EMBEDDING
 # ============================================================================
+
 
 class EmbeddingStage(PipelineStage):
     """
@@ -264,6 +263,7 @@ class EmbeddingStage(PipelineStage):
 # STAGE 4: DATABASE PERSISTENCE
 # ============================================================================
 
+
 class DatabasePersistenceStage(PipelineStage):
     """
     Stage 4: Save document and chunk metadata to database.
@@ -310,9 +310,7 @@ class DatabasePersistenceStage(PipelineStage):
 
                 parent_path = ""
                 for depth, segment in enumerate(segments, start=1):
-                    current_path = (
-                        f"{parent_path} > {segment}" if parent_path else segment
-                    )
+                    current_path = f"{parent_path} > {segment}" if parent_path else segment
 
                     if current_path in seen_paths:
                         parent_path = current_path
@@ -322,14 +320,16 @@ class DatabasePersistenceStage(PipelineStage):
                     entry_id = f"h{level}_{entry_count}"
                     parent_id = seen_paths.get(parent_path)
 
-                    entries.append({
-                        "id": entry_id,
-                        "level": level,
-                        "text": segment,
-                        "parent_id": parent_id,
-                        "chunk_index": idx,
-                        "path_from_root": current_path,
-                    })
+                    entries.append(
+                        {
+                            "id": entry_id,
+                            "level": level,
+                            "text": segment,
+                            "parent_id": parent_id,
+                            "chunk_index": idx,
+                            "path_from_root": current_path,
+                        }
+                    )
 
                     seen_paths[current_path] = entry_id
                     parent_path = current_path
@@ -359,8 +359,8 @@ class DatabasePersistenceStage(PipelineStage):
         Raises:
             DatabaseError: If database operations fail
         """
+        from db.crud import ChunkCRUD, DocumentCRUD
         from db.database import session_scope
-        from db.crud import DocumentCRUD, ChunkCRUD
         from db.schema import DocumentStatus
 
         if not context.document_id:
@@ -385,19 +385,18 @@ class DatabasePersistenceStage(PipelineStage):
                     if not chunk_uuid:
                         # Generate UUID if not present (shouldn't happen)
                         chunk_uuid = str(uuid_lib.uuid4())
-                        logger.warning(
-                            f"Chunk {idx} missing UUID, generated: {chunk_uuid}"
-                        )
+                        logger.warning(f"Chunk {idx} missing UUID, generated: {chunk_uuid}")
 
-                    chunks_data.append({
-                        "uuid": chunk_uuid,
-                        "chunk_text": chunk.page_content,
-                        "chunk_index": idx,
-                        "chunk_metadata": {
-                            k: v for k, v in chunk.metadata.items()
-                            if k != "uuid"
-                        },
-                    })
+                    chunks_data.append(
+                        {
+                            "uuid": chunk_uuid,
+                            "chunk_text": chunk.page_content,
+                            "chunk_index": idx,
+                            "chunk_metadata": {
+                                k: v for k, v in chunk.metadata.items() if k != "uuid"
+                            },
+                        }
+                    )
 
                 # Save chunks to database
                 created_chunks = chunk_crud.create_chunks_batch(

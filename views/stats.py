@@ -6,8 +6,8 @@ Provides UI for viewing database statistics and analytics.
 
 import streamlit as st
 
+from db.crud import DocumentCRUD
 from db.database import session_scope
-from db.crud import DocumentCRUD, ChunkCRUD
 from db.schema import DocumentStatus
 
 
@@ -17,7 +17,6 @@ def render():
 
     with session_scope() as session:
         crud = DocumentCRUD(session)
-        chunk_crud = ChunkCRUD(session)
 
         docs = crud.get_all_documents()
 

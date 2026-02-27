@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Tuple
 
 import streamlit as st
 
-from db.database import session_scope
 from db.crud import DocumentCRUD
+from db.database import session_scope
 from views.components.chunk_inspector import render_chunk_inspector
 
 
@@ -101,9 +101,7 @@ def _render_toc_tab(
             key=f"toc_header_select_{doc_id}",
             label_visibility="collapsed",
             format_func=lambda option: (
-                f"All sections ({len(sorted_chunks)} chunks)"
-                if option == all_sections
-                else option
+                f"All sections ({len(sorted_chunks)} chunks)" if option == all_sections else option
             ),
         )
 
@@ -115,8 +113,7 @@ def _render_toc_tab(
         else:
             st.subheader(f"Chunks: {selected_header}")
             matching = [
-                chunk for chunk in sorted_chunks
-                if _chunk_matches_header(chunk, selected_header)
+                chunk for chunk in sorted_chunks if _chunk_matches_header(chunk, selected_header)
             ]
 
         if not matching:
@@ -137,7 +134,8 @@ def _flatten_toc(toc: dict, prefix: str = "") -> list:
     entries = toc.get("entries")
     if isinstance(entries, list):
         entry_map = {
-            entry.get("id"): entry for entry in entries
+            entry.get("id"): entry
+            for entry in entries
             if isinstance(entry, dict) and entry.get("id")
         }
         path_cache = {}

@@ -1,16 +1,15 @@
-from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context
+import importlib.util
 
 # Import your models and settings
 # Import Base directly from schema to avoid circular imports with database.py
 import sys
-import importlib.util
+from logging.config import fileConfig
 from pathlib import Path
+
 from dotenv import load_dotenv
+from sqlalchemy import pool
+
+from alembic import context
 
 # Add parent directory to path so we can import our modules
 project_root = Path(__file__).parent.parent
@@ -90,6 +89,7 @@ def run_migrations_online() -> None:
     """
     # Create engine directly from our database_url instead of using config
     from sqlalchemy import create_engine
+
     connectable = create_engine(database_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:

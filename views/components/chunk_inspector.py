@@ -56,9 +56,7 @@ def render_chunk_inspector(chunks: List, key_prefix: str = "ci"):
         display_chunks = chunks
     else:
         selected = chunks[int(chunk_idx)]
-        st.caption(
-            f"Showing 1 of {total} chunks (selected chunk index: {selected.chunk_index})"
-        )
+        st.caption(f"Showing 1 of {total} chunks (selected chunk index: {selected.chunk_index})")
         display_chunks = [selected]
 
     for chunk in display_chunks:

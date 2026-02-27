@@ -158,9 +158,7 @@ def _render_document_detail(doc: dict[str, Any]) -> None:
     col3.metric("Check WARN", counts[WARN])
     col4.metric("Check FAIL", counts[FAIL])
 
-    tab_checks, tab_chunks, tab_headers = st.tabs(
-        ["Checks", "Chunk Samples", "Header Coverage"]
-    )
+    tab_checks, tab_chunks, tab_headers = st.tabs(["Checks", "Chunk Samples", "Header Coverage"])
 
     with tab_checks:
         check_rows = [
@@ -353,10 +351,7 @@ def render() -> None:
         st.markdown("### Per-Document Details")
         for doc in documents:
             label = f"[{doc['doc_id']}] {doc['title']}"
-            label_html = (
-                f"{label} "
-                f"{_badge_html(doc['verdict'])}"
-            )
+            label_html = f"{label} {_badge_html(doc['verdict'])}"
             with st.expander(label, expanded=(doc["verdict"] != PASS)):
                 st.markdown(label_html, unsafe_allow_html=True)
                 _render_document_detail(doc)

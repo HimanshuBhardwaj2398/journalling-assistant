@@ -13,12 +13,14 @@ class MeditationDBError(Exception):
     All custom exceptions in the application should inherit from this base class
     to allow catching all application-specific errors.
     """
+
     pass
 
 
 # ============================================================================
 # CONFIGURATION ERRORS
 # ============================================================================
+
 
 class ConfigurationError(MeditationDBError):
     """
@@ -29,6 +31,7 @@ class ConfigurationError(MeditationDBError):
         - Invalid configuration values
         - API keys not set
     """
+
     pass
 
 
@@ -36,12 +39,14 @@ class ConfigurationError(MeditationDBError):
 # PIPELINE ERRORS
 # ============================================================================
 
+
 class PipelineError(MeditationDBError):
     """
     Base class for pipeline-related errors.
 
     This covers errors occurring during document ingestion pipeline execution.
     """
+
     pass
 
 
@@ -55,6 +60,7 @@ class ParsingError(PipelineError):
         - Invalid document format
         - Empty parsing result
     """
+
     pass
 
 
@@ -67,6 +73,7 @@ class ChunkingError(PipelineError):
         - Empty text provided for chunking
         - Chunk size validation errors
     """
+
     pass
 
 
@@ -79,6 +86,7 @@ class EmbeddingError(PipelineError):
         - Embedding API errors
         - Invalid embedding dimensions
     """
+
     pass
 
 
@@ -86,12 +94,14 @@ class EmbeddingError(PipelineError):
 # DATABASE ERRORS
 # ============================================================================
 
+
 class DatabaseError(MeditationDBError):
     """
     Base class for database-related errors.
 
     This covers errors occurring during database operations.
     """
+
     pass
 
 
@@ -103,6 +113,7 @@ class DocumentNotFoundError(DatabaseError):
         - Querying non-existent document ID
         - Attempting to resume processing for missing document
     """
+
     pass
 
 
@@ -114,6 +125,7 @@ class DuplicateDocumentError(DatabaseError):
         - URL already ingested
         - PDF file path already exists in database
     """
+
     pass
 
 
@@ -126,12 +138,14 @@ class SchemaValidationError(DatabaseError):
         - Incompatible column types
         - Failed schema migration
     """
+
     pass
 
 
 # ============================================================================
 # COLLECTION ERRORS
 # ============================================================================
+
 
 class CollectionError(MeditationDBError):
     """
@@ -142,6 +156,7 @@ class CollectionError(MeditationDBError):
         - Collection not found
         - Operation failed on both databases
     """
+
     pass
 
 
@@ -154,4 +169,5 @@ class EmbeddingSyncError(CollectionError):
         - Missing embeddings for chunks in app DB
         - UUID mismatch between databases
     """
+
     pass

@@ -29,7 +29,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -38,8 +38,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from db.crud import ChunkCRUD, DocumentCRUD
 from db.database import session_scope
-from db.crud import DocumentCRUD, ChunkCRUD
 from db.schema import DocumentStatus
 
 logging.basicConfig(
@@ -74,10 +74,10 @@ def extract_headers_from_text(text: str) -> Tuple[List[str], Dict[str, int]]:
 
         # Snapshot current path
         parts = []
-        for l in range(1, 7):
-            if current_headers[l]:
-                parts.append(current_headers[l])
-                level_map[current_headers[l]] = l
+        for level_index in range(1, 7):
+            if current_headers[level_index]:
+                parts.append(current_headers[level_index])
+                level_map[current_headers[level_index]] = level_index
 
         path = " > ".join(parts)
         if path and path not in paths:
@@ -223,8 +223,8 @@ def rebuild_markdown_from_source(
     Returns:
         Summary dict with status
     """
-    from ingestion.parsing import ParserFactory
     from core.exceptions import ParsingError
+    from ingestion.parsing import ParserFactory
 
     doc_crud = DocumentCRUD(session)
 
@@ -367,10 +367,10 @@ def rebuild_document(
 
                 # Snapshot path
                 parts = []
-                for l in range(1, 7):
-                    if running_headers[l]:
-                        parts.append(running_headers[l])
-                        chunk_level_map[running_headers[l]] = l
+                for level_index in range(1, 7):
+                    if running_headers[level_index]:
+                        parts.append(running_headers[level_index])
+                        chunk_level_map[running_headers[level_index]] = level_index
 
                 path = " > ".join(parts)
                 if path and path not in chunk_paths:
@@ -380,10 +380,10 @@ def rebuild_document(
         else:
             # No headers in chunk — use running context
             parts = []
-            for l in range(1, 7):
-                if running_headers[l]:
-                    parts.append(running_headers[l])
-                    chunk_level_map[running_headers[l]] = l
+            for level_index in range(1, 7):
+                if running_headers[level_index]:
+                    parts.append(running_headers[level_index])
+                    chunk_level_map[running_headers[level_index]] = level_index
             path = " > ".join(parts)
             if path:
                 chunk_paths = [path]
@@ -399,11 +399,17 @@ def rebuild_document(
         # Remove old-format keys if present
         old_meta = chunk.chunk_metadata or {}
         keys_to_remove = [k for k in old_meta if k.startswith("Header ")]
-        keys_to_remove.extend([
-            "all_headers", "primary_header", "header_level",
-            "section_path", "original_doc_id", "original_doc_title",
-            "chunk_index",
-        ])
+        keys_to_remove.extend(
+            [
+                "all_headers",
+                "primary_header",
+                "header_level",
+                "section_path",
+                "original_doc_id",
+                "original_doc_title",
+                "chunk_index",
+            ]
+        )
         if keys_to_remove and not dry_run:
             cleaned = {k: v for k, v in old_meta.items() if k not in keys_to_remove}
             cleaned.update(metadata_updates)
@@ -552,12 +558,14 @@ def main():
         if args.rebuild_markdown:
             method = "reparse" if args.reparse else "chunks"
             mode_label = "DRY RUN" if args.dry_run else "REBUILD"
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             print(f"MARKDOWN {mode_label} (method: {method})")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
             print(f"Documents to process: {len(doc_ids)}\n")
 
-            rebuild_fn = rebuild_markdown_from_source if args.reparse else rebuild_markdown_from_chunks
+            rebuild_fn = (
+                rebuild_markdown_from_source if args.reparse else rebuild_markdown_from_chunks
+            )
             results = []
             for doc_id in doc_ids:
                 result = rebuild_fn(doc_id, session, dry_run=args.dry_run, force=args.force)
@@ -569,22 +577,22 @@ def main():
             skipped = [r for r in results if r.get("skipped")]
             errored = [r for r in results if "error" in r]
 
-            print(f"{'='*70}")
-            print(f"SUMMARY")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
+            print("SUMMARY")
+            print(f"{'=' * 70}")
             print(f"  Rebuilt:  {len(rebuilt)}")
             print(f"  Skipped:  {len(skipped)}")
             print(f"  Errors:   {len(errored)}")
             if args.dry_run:
-                print(f"\n  This was a dry run. Re-run without --dry-run to apply changes.")
+                print("\n  This was a dry run. Re-run without --dry-run to apply changes.")
             print()
             return
 
         # ---- TOC REBUILD MODE (default) ----
         mode_label = "DRY RUN" if args.dry_run else "REBUILD"
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"TOC & CHUNK METADATA {mode_label}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
         print(f"Documents to process: {len(doc_ids)}\n")
 
         results = []
@@ -597,18 +605,16 @@ def main():
         # Summary
         processed = [r for r in results if "error" not in r]
         skipped = [r for r in results if "error" in r]
-        total_recovered = sum(
-            r["new_toc_count"] - r["old_toc_count"] for r in processed
-        )
+        total_recovered = sum(r["new_toc_count"] - r["old_toc_count"] for r in processed)
 
-        print(f"{'='*70}")
-        print(f"SUMMARY")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
+        print("SUMMARY")
+        print(f"{'=' * 70}")
         print(f"  Processed: {len(processed)}")
         print(f"  Skipped:   {len(skipped)}")
         print(f"  TOC entries recovered: {total_recovered}")
         if args.dry_run:
-            print(f"\n  This was a dry run. Re-run without --dry-run to apply changes.")
+            print("\n  This was a dry run. Re-run without --dry-run to apply changes.")
         print()
 
 

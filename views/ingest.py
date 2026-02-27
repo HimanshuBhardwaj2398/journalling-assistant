@@ -12,9 +12,9 @@ import streamlit as st
 
 from core.exceptions import DuplicateDocumentError
 from core.interfaces import StageStatus
-from services.ingestion_service import ingest_document
-from db.database import session_scope
 from db.crud import get_all_collections
+from db.database import session_scope
+from services.ingestion_service import ingest_document
 
 
 def render():
@@ -173,9 +173,7 @@ def render():
 
                     if stage_status == StageStatus.RUNNING:
                         stage_start_times[stage_name] = time.time()
-                        stage_placeholders[stage_name].markdown(
-                            f"🔄 **{label}** - Running..."
-                        )
+                        stage_placeholders[stage_name].markdown(f"🔄 **{label}** - Running...")
                         log_lines.append(f"[{label}] Started")
                     elif stage_status == StageStatus.COMPLETED:
                         elapsed = time.time() - stage_start_times.get(stage_name, time.time())

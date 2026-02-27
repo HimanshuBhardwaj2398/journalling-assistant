@@ -6,15 +6,15 @@ Handles document ingestion, processing, and orchestration.
 
 import asyncio
 import os
-from typing import Optional, Callable
+from typing import Callable, Optional
 
-from db.database import session_scope
-from db.crud import DocumentCRUD
-from db.schema import DocumentStatus
-from ingestion.orchestrator import IngestionOrchestrator
-from core.interfaces import StageStatus
-from ingestion.embed import VectorStoreConfig
 from core.exceptions import DuplicateDocumentError
+from core.interfaces import StageStatus
+from db.crud import DocumentCRUD
+from db.database import session_scope
+from db.schema import DocumentStatus
+from ingestion.embed import VectorStoreConfig
+from ingestion.orchestrator import IngestionOrchestrator
 
 
 def get_orchestrator(collection_name: str = "meditation_chunks") -> IngestionOrchestrator:

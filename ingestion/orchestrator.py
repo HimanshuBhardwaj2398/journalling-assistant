@@ -7,17 +7,17 @@ Replaces linear state machine with dependency-aware stage execution.
 import logging
 import os
 from enum import Enum
-from typing import Union, List, Dict, Any, Optional, Callable
-
-from core.interfaces import PipelineStage, PipelineContext, StageStatus
-from core.exceptions import PipelineError, DocumentNotFoundError
-from ingestion.parsing import ParserFactory
-from ingestion.chunking import Config as ChunkingConfig
-from ingestion.embed import VectorStoreManager, VectorStoreConfig
-from ingestion.stages import ParsingStage, ChunkingStage, EmbeddingStage, DatabasePersistenceStage
+from typing import Any, Callable, Dict, List, Optional, Union
 
 # LangChain Document for type hints
 from langchain.schema import Document as LangchainDocument
+
+from core.exceptions import DocumentNotFoundError, PipelineError
+from core.interfaces import PipelineContext, PipelineStage, StageStatus
+from ingestion.chunking import Config as ChunkingConfig
+from ingestion.embed import VectorStoreConfig, VectorStoreManager
+from ingestion.parsing import ParserFactory
+from ingestion.stages import ChunkingStage, DatabasePersistenceStage, EmbeddingStage, ParsingStage
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,10 @@ logger = logging.getLogger(__name__)
 # SERIALIZATION HELPERS (kept for backward compatibility)
 # ============================================================================
 
+
 def serialize_docs(docs: List[LangchainDocument]) -> List[Dict[str, Any]]:
     """Converts Langchain Documents to JSON-serializable format."""
-    return [
-        {"page_content": doc.page_content, "metadata": doc.metadata}
-        for doc in docs
-    ]
+    return [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs]
 
 
 def deserialize_docs(serialized_docs: List[Dict[str, Any]]) -> List[LangchainDocument]:
@@ -46,6 +44,7 @@ def deserialize_docs(serialized_docs: List[Dict[str, Any]]) -> List[LangchainDoc
 # REPROCESS MODES
 # ============================================================================
 
+
 class ReprocessMode(str, Enum):
     """Supported reprocessing entry points for existing documents."""
 
@@ -57,6 +56,7 @@ class ReprocessMode(str, Enum):
 # ============================================================================
 # DAG PIPELINE ORCHESTRATOR
 # ============================================================================
+
 
 class PipelineOrchestrator:
     """
@@ -112,7 +112,7 @@ class PipelineOrchestrator:
         for stage_name in self._stage_map.keys():
             if stage_name not in visited:
                 if has_cycle(stage_name):
-                    raise PipelineError(f"Circular dependency detected in pipeline stages")
+                    raise PipelineError("Circular dependency detected in pipeline stages")
 
         logger.debug("DAG validation passed - no cycles detected")
 
@@ -178,12 +178,11 @@ class PipelineOrchestrator:
             # Check if dependencies are met
             if not stage.can_run(current_context):
                 missing = [
-                    dep for dep in stage.required_stages
+                    dep
+                    for dep in stage.required_stages
                     if current_context.stage_results.get(dep) != StageStatus.COMPLETED
                 ]
-                logger.warning(
-                    f"Stage '{stage.name}' cannot run. Missing dependencies: {missing}"
-                )
+                logger.warning(f"Stage '{stage.name}' cannot run. Missing dependencies: {missing}")
                 continue
 
             # Execute stage
@@ -212,6 +211,7 @@ class PipelineOrchestrator:
 # ============================================================================
 # HIGH-LEVEL INGESTION ORCHESTRATOR (backward compatible API)
 # ============================================================================
+
 
 class IngestionOrchestrator:
     """
@@ -296,15 +296,13 @@ class IngestionOrchestrator:
                 - errors: Any error messages
                 - success: Whether pipeline completed successfully
         """
+        from db.crud import ChunkCRUD, DocumentCRUD
         from db.database import session_scope
-        from db.crud import DocumentCRUD, ChunkCRUD
         from db.schema import DocumentStatus
 
         mode = self._parse_reprocess_mode(reprocess_mode)
         if clear_markdown and mode != ReprocessMode.FULL:
-            raise PipelineError(
-                "clear_markdown is only supported with reprocess_mode='full'"
-            )
+            raise PipelineError("clear_markdown is only supported with reprocess_mode='full'")
 
         # Create or load document
         document_id = None
@@ -369,9 +367,7 @@ class IngestionOrchestrator:
             if mode is not None:
                 if chunk_uuids:
                     try:
-                        deleted_embeddings = self.vector_store_manager.delete_by_ids(
-                            chunk_uuids
-                        )
+                        deleted_embeddings = self.vector_store_manager.delete_by_ids(chunk_uuids)
                         logger.info(
                             "Deleted %s existing embeddings for document %s",
                             deleted_embeddings,
@@ -379,8 +375,7 @@ class IngestionOrchestrator:
                         )
                     except Exception as e:
                         raise PipelineError(
-                            f"Failed to clear existing embeddings for document "
-                            f"{document_id}: {e}"
+                            f"Failed to clear existing embeddings for document {document_id}: {e}"
                         ) from e
 
                 with session_scope() as session:
@@ -406,9 +401,7 @@ class IngestionOrchestrator:
                         doc.doc_metadata = existing_doc_metadata
 
                     doc.status = DocumentStatus.PENDING
-                    doc.status_details = (
-                        f"Reprocessing ({mode.value}) - pipeline rerun requested"
-                    )
+                    doc.status_details = f"Reprocessing ({mode.value}) - pipeline rerun requested"
                     session.commit()
 
                 logger.info(
@@ -541,8 +534,7 @@ class IngestionOrchestrator:
                 "chunk_count": len(final_context.chunks) if final_context.chunks else 0,
                 "reprocess_mode": mode.value if mode else None,
                 "stage_results": {
-                    name: status.value
-                    for name, status in final_context.stage_results.items()
+                    name: status.value for name, status in final_context.stage_results.items()
                 },
                 "errors": final_context.error_messages,
                 "success": success,
@@ -599,13 +591,13 @@ if __name__ == "__main__":
 
     try:
         result = asyncio.run(orchestrator.process(source))
-        print(f"\n=== Pipeline Result ===")
+        print("\n=== Pipeline Result ===")
         print(f"Source: {result['source']}")
         print(f"Title: {result['title']}")
         print(f"Chunks: {result['chunk_count']}")
         print(f"Success: {result['success']}")
         print(f"Stage Results: {result['stage_results']}")
-        if result['errors']:
+        if result["errors"]:
             print(f"Errors: {result['errors']}")
     except Exception as e:
         print(f"Pipeline failed: {e}")

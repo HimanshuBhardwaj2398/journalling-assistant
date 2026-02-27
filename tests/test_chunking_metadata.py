@@ -2,7 +2,8 @@
 
 import pytest
 from langchain.schema import Document
-from ingestion.chunking import MarkdownChunker, Config
+
+from ingestion.chunking import Config, MarkdownChunker
 from ingestion.stages import DatabasePersistenceStage
 
 
@@ -22,7 +23,11 @@ class TestBuildHeaderPath:
         assert level_map == {"Introduction": 1}
 
     def test_nested_headers(self):
-        header_dict = {"Header 1": "Digha Nikaya", "Header 2": "Brahmajala Sutta", "Header 3": "Chapter 1"}
+        header_dict = {
+            "Header 1": "Digha Nikaya",
+            "Header 2": "Brahmajala Sutta",
+            "Header 3": "Chapter 1",
+        }
         path, level_map = self.chunker._build_header_path(header_dict)
         assert path == "Digha Nikaya > Brahmajala Sutta > Chapter 1"
         assert level_map == {"Digha Nikaya": 1, "Brahmajala Sutta": 2, "Chapter 1": 3}
@@ -106,9 +111,7 @@ class TestAddFinalMetadata:
 
     def test_chunk_with_no_headers(self):
         """Chunk without headers gets empty paths."""
-        chunks = [
-            Document(page_content="Standalone content.", metadata={})
-        ]
+        chunks = [Document(page_content="Standalone content.", metadata={})]
         result = self.chunker._add_final_metadata(chunks)
         meta = result[0].metadata
 

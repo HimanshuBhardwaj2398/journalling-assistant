@@ -1,16 +1,16 @@
 import asyncio
 import logging
 import re
-import time
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain.schema import Document
 from langchain.text_splitter import MarkdownHeaderTextSplitter
-from langchain_experimental.text_splitter import SemanticChunker
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_experimental.text_splitter import SemanticChunker
 
 from core.exceptions import ChunkingError
 
@@ -48,6 +48,7 @@ class ChunkingStats:
 # ============================================================================
 # THREAD-SAFE EMBEDDINGS CACHE
 # ============================================================================
+
 
 class ThreadSafeEmbeddingsCache:
     """
@@ -136,15 +137,13 @@ class ThreadSafeEmbeddingsCache:
 
     def get_cache_info(self) -> Dict[str, Any]:
         """Get information about cached models."""
-        return {
-            "cached_models": list(self._cache.keys()),
-            "cache_size": len(self._cache)
-        }
+        return {"cached_models": list(self._cache.keys()), "cache_size": len(self._cache)}
 
 
 # ============================================================================
 # MARKDOWN CHUNKER
 # ============================================================================
+
 
 class MarkdownChunker:
     """
@@ -165,9 +164,7 @@ class MarkdownChunker:
         self.text = text.strip()
         self.config = config or Config()
         self.title = title or self._extract_title()
-        self.embeddings = (
-            self._get_embeddings() if self.config.enable_semantic else None
-        )
+        self.embeddings = self._get_embeddings() if self.config.enable_semantic else None
 
     def _get_embeddings(self) -> Any:
         """Get embeddings model from thread-safe cache."""
@@ -234,9 +231,7 @@ class MarkdownChunker:
                 avg_chunk_size=total_words / len(chunks) if chunks else 0,
             )
 
-            logger.info(
-                f"Chunking completed: {len(chunks)} chunks in {processing_time:.2f}s"
-            )
+            logger.info(f"Chunking completed: {len(chunks)} chunks in {processing_time:.2f}s")
             return chunks, stats
 
         except Exception as e:
@@ -246,8 +241,7 @@ class MarkdownChunker:
     async def _split_by_headers(self) -> List[Document]:
         """Split text by markdown headers."""
         headers_to_split = [
-            (f"{'#' * i}", f"Header {i}")
-            for i in range(1, self.config.max_header_level + 1)
+            (f"{'#' * i}", f"Header {i}") for i in range(1, self.config.max_header_level + 1)
         ]
 
         try:
@@ -266,16 +260,13 @@ class MarkdownChunker:
         except Exception as e:
             logger.warning(f"Header splitting failed: {e}")
             # Fallback to single document
-            return [
-                Document(
-                    page_content=self.text, metadata=self._extract_headers(self.text)
-                )
-            ]
+            return [Document(page_content=self.text, metadata=self._extract_headers(self.text))]
 
     async def _split_oversized_chunks(self, chunks: List[Document]) -> List[Document]:
         """Split chunks that exceed max_size using semantic splitting."""
         oversized_indices = [
-            idx for idx, chunk in enumerate(chunks)
+            idx
+            for idx, chunk in enumerate(chunks)
             if len(chunk.page_content) > self.config.max_size
         ]
         if not oversized_indices:
@@ -325,9 +316,7 @@ class MarkdownChunker:
             if not self.embeddings:
                 return [chunk]
 
-            splitter = SemanticChunker(
-                self.embeddings, breakpoint_threshold_type="percentile"
-            )
+            splitter = SemanticChunker(self.embeddings, breakpoint_threshold_type="percentile")
             docs = splitter.create_documents([chunk.page_content])
 
             # Preserve original metadata
@@ -360,28 +349,22 @@ class MarkdownChunker:
 
         merged_chunks: List[Document] = []
         chunk_index = 0
-        TINY_CHUNK_THRESHOLD = self.config.tiny_chunk_threshold
+        tiny_chunk_threshold = self.config.tiny_chunk_threshold
 
         while chunk_index < len(chunks):
             current_chunk = chunks[chunk_index]
             current_chunk_size = len(current_chunk.page_content.split())
 
             # If a chunk is tiny, merge with next chunk.
-            if current_chunk_size < TINY_CHUNK_THRESHOLD and (chunk_index + 1) < len(
-                chunks
-            ):
+            if current_chunk_size < tiny_chunk_threshold and (chunk_index + 1) < len(chunks):
                 next_chunk = chunks[chunk_index + 1]
-                merged_content = "\n\n".join(
-                    [current_chunk.page_content, next_chunk.page_content]
-                )
+                merged_content = "\n\n".join([current_chunk.page_content, next_chunk.page_content])
                 merged_metadata = self._merge_metadata(
                     current_chunk.metadata.copy(), next_chunk.metadata
                 )
                 merged_metadata["is_combined"] = True
 
-                new_chunk = Document(
-                    page_content=merged_content, metadata=merged_metadata
-                )
+                new_chunk = Document(page_content=merged_content, metadata=merged_metadata)
                 merged_chunks.append(new_chunk)
                 chunk_index += 2
                 continue
@@ -406,9 +389,7 @@ class MarkdownChunker:
                     break
 
                 content_parts.append(next_chunk.page_content)
-                combined_metadata = self._merge_metadata(
-                    combined_metadata, next_chunk.metadata
-                )
+                combined_metadata = self._merge_metadata(combined_metadata, next_chunk.metadata)
                 combined_size += len(next_chunk.page_content)
                 next_chunk_index += 1
 
@@ -416,9 +397,7 @@ class MarkdownChunker:
                     break
 
             merged_content = "\n\n".join(content_parts)
-            new_chunk = Document(
-                page_content=merged_content, metadata=combined_metadata
-            )
+            new_chunk = Document(page_content=merged_content, metadata=combined_metadata)
 
             if next_chunk_index > chunk_index + 1:
                 new_chunk.metadata["is_combined"] = True
@@ -453,8 +432,8 @@ class MarkdownChunker:
             return "", {}
 
         sorted_levels = sorted(levels.keys())
-        path_parts = [levels[l] for l in sorted_levels]
-        level_map = {levels[l]: l for l in sorted_levels}
+        path_parts = [levels[level] for level in sorted_levels]
+        level_map = {levels[level]: level for level in sorted_levels}
 
         return " > ".join(path_parts), level_map
 
@@ -524,10 +503,15 @@ class MarkdownChunker:
 
             # Remove old keys
             keys_to_remove = [k for k in chunk.metadata if k.startswith("Header ")]
-            keys_to_remove.extend([
-                "all_headers", "primary_header", "header_level",
-                "section_path", "chunk_index",
-            ])
+            keys_to_remove.extend(
+                [
+                    "all_headers",
+                    "primary_header",
+                    "header_level",
+                    "section_path",
+                    "chunk_index",
+                ]
+            )
             for key in keys_to_remove:
                 chunk.metadata.pop(key, None)
 

@@ -2,6 +2,7 @@
 Centralized configuration management using Pydantic Settings.
 All environment variables are loaded and validated here.
 """
+
 from functools import lru_cache
 from typing import Optional
 

@@ -6,8 +6,8 @@ Provides UI for exploring and managing documents in the database.
 
 import streamlit as st
 
-from db.database import session_scope
 from db.crud import DocumentCRUD
+from db.database import session_scope
 from db.schema import DocumentStatus
 from services.collection_service import CollectionService
 
@@ -16,6 +16,7 @@ def render():
     """Render the browse database page."""
     if st.session_state.get("selected_doc_id"):
         from views.document_detail import render as render_detail
+
         render_detail(st.session_state.selected_doc_id)
         return
 
@@ -95,6 +96,7 @@ def _render_document_card(doc, session):
             sorted_chunks = sorted(doc.document_chunks, key=lambda c: c.chunk_index)
             with st.expander(f"Chunk Inspector ({len(sorted_chunks)} chunks)"):
                 from views.components.chunk_inspector import render_chunk_inspector
+
                 render_chunk_inspector(sorted_chunks, key_prefix=f"browse_{doc.id}")
 
         # Actions section
@@ -181,6 +183,5 @@ def _render_action_controls(doc):
                 )
             elif pending_action == "delete":
                 st.warning(
-                    f"Delete '{doc.title}', {len(doc.document_chunks)} chunks, "
-                    f"and all embeddings?"
+                    f"Delete '{doc.title}', {len(doc.document_chunks)} chunks, and all embeddings?"
                 )

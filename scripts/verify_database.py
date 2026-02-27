@@ -4,13 +4,14 @@ Run this after Sprint 2 Phase 2 to ensure everything is configured correctly.
 """
 
 import sys
-from sqlalchemy import text, inspect
+
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 
-from db.database import engine, init_db, session_scope
-from db.schema import Document, Chunk, DocumentStatus
-from db.crud import DocumentCRUD, ChunkCRUD
 from config.settings import get_settings
+from db.crud import DocumentCRUD
+from db.database import engine, session_scope
+from db.schema import DocumentStatus
 
 
 def verify_connection():
@@ -32,9 +33,7 @@ def verify_pgvector():
     print("\n2. Checking pgvector extension...")
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT * FROM pg_extension WHERE extname = 'vector'")
-            )
+            result = conn.execute(text("SELECT * FROM pg_extension WHERE extname = 'vector'"))
             if result.fetchone():
                 print("   ✓ pgvector extension is installed")
                 return True
@@ -72,9 +71,18 @@ def verify_document_schema():
     columns = {col["name"] for col in inspector.get_columns("documents")}
 
     required_columns = {
-        "id", "title", "file_path", "markdown", "doc_metadata",
-        "tags", "status", "status_details", "chunks",
-        "description", "created_at", "updated_at"
+        "id",
+        "title",
+        "file_path",
+        "markdown",
+        "doc_metadata",
+        "tags",
+        "status",
+        "status_details",
+        "chunks",
+        "description",
+        "created_at",
+        "updated_at",
     }
 
     missing = required_columns - columns
@@ -93,8 +101,13 @@ def verify_chunk_schema():
     columns = {col["name"] for col in inspector.get_columns("chunks")}
 
     required_columns = {
-        "id", "uuid", "document_id", "chunk_text",
-        "chunk_index", "chunk_metadata", "created_at"
+        "id",
+        "uuid",
+        "document_id",
+        "chunk_text",
+        "chunk_index",
+        "chunk_metadata",
+        "created_at",
     }
 
     missing = required_columns - columns

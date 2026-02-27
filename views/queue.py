@@ -6,8 +6,8 @@ Provides UI for processing pending documents and retrying failed ones.
 
 import streamlit as st
 
-from db.database import session_scope
 from db.crud import DocumentCRUD
+from db.database import session_scope
 from db.schema import DocumentStatus
 from services.ingestion_service import process_document_by_id
 
@@ -156,7 +156,9 @@ def _render_in_progress_section(in_progress: list):
 def _render_failed_section(failed_docs: list):
     """Render the failed documents section."""
     st.subheader("Failed Documents")
-    st.markdown("Documents that failed processing. Click retry to attempt again or delete to remove.")
+    st.markdown(
+        "Documents that failed processing. Click retry to attempt again or delete to remove."
+    )
 
     for doc in failed_docs:
         with st.expander(f"**[{doc.id}] {doc.title}**", expanded=False):

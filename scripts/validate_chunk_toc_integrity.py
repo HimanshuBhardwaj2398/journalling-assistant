@@ -109,9 +109,7 @@ def extract_markdown_headers(markdown: str) -> list[dict[str, Any]]:
         for deeper in range(level + 1, 7):
             running_headers[deeper] = None
 
-        path_from_root = " > ".join(
-            header for header in running_headers[1:] if header
-        )
+        path_from_root = " > ".join(header for header in running_headers[1:] if header)
         headers.append(
             {
                 "line": lineno,
@@ -692,9 +690,7 @@ def validate_chunk_metadata(
                         ),
                     )
 
-            if markdown_path_set and not _path_matches_markdown(
-                normalized_path, markdown_path_set
-            ):
+            if markdown_path_set and not _path_matches_markdown(normalized_path, markdown_path_set):
                 unmatched_paths.append((chunk_index, normalized_path))
                 add_chunk_issue(
                     chunk_index,
@@ -849,7 +845,9 @@ def build_chunk_inspections(
     for chunk in sampled_chunks:
         chunk_index = int(chunk.get("chunk_index", -1))
         chunk_text = chunk.get("chunk_text") or ""
-        metadata = chunk.get("chunk_metadata") if isinstance(chunk.get("chunk_metadata"), dict) else {}
+        metadata = (
+            chunk.get("chunk_metadata") if isinstance(chunk.get("chunk_metadata"), dict) else {}
+        )
         all_paths = metadata.get("all_header_paths")
         if not isinstance(all_paths, list):
             all_paths = []
@@ -890,9 +888,9 @@ def fetch_documents_for_validation(
     """
 
     if doc_ids:
-        stmt = text(
-            base_select + " WHERE d.id IN :doc_ids ORDER BY d.id"
-        ).bindparams(bindparam("doc_ids", expanding=True))
+        stmt = text(base_select + " WHERE d.id IN :doc_ids ORDER BY d.id").bindparams(
+            bindparam("doc_ids", expanding=True)
+        )
         rows = session.execute(stmt, {"doc_ids": list(doc_ids)}).mappings().all()
         return list(rows)
 
@@ -1213,9 +1211,13 @@ def render_markdown_report(
     lines.append("## Global Summary")
     lines.append("")
     lines.append(f"- Documents analyzed: {len(documents)}")
-    lines.append(f"- Document verdicts: PASS={verdict_counts[PASS]}, WARN={verdict_counts[WARN]}, FAIL={verdict_counts[FAIL]}")
+    lines.append(
+        f"- Document verdicts: PASS={verdict_counts[PASS]}, WARN={verdict_counts[WARN]}, FAIL={verdict_counts[FAIL]}"
+    )
     lines.append(f"- Total checks: {len(global_checks)}")
-    lines.append(f"- Check outcomes: PASS={global_counts[PASS]}, WARN={global_counts[WARN]}, FAIL={global_counts[FAIL]}")
+    lines.append(
+        f"- Check outcomes: PASS={global_counts[PASS]}, WARN={global_counts[WARN]}, FAIL={global_counts[FAIL]}"
+    )
     lines.append("")
 
     for doc in documents:
@@ -1273,9 +1275,7 @@ def render_markdown_report(
             for chunk_index, path in doc["unmatched_chunk_paths"][:20]:
                 lines.append(f"- chunk `{chunk_index}`: `{path}`")
             if len(doc["unmatched_chunk_paths"]) > 20:
-                lines.append(
-                    f"- ... plus {len(doc['unmatched_chunk_paths']) - 20} more"
-                )
+                lines.append(f"- ... plus {len(doc['unmatched_chunk_paths']) - 20} more")
         else:
             lines.append("- None")
         lines.append("")
@@ -1377,7 +1377,9 @@ def execute_validation(
                         "title": document.get("title") or "Untitled",
                         "status": document.get("status") or "unknown",
                         "verdict": FAIL,
-                        "checks": [CheckResult("chunks_exist", FAIL, "No chunks found for document")],
+                        "checks": [
+                            CheckResult("chunks_exist", FAIL, "No chunks found for document")
+                        ],
                         "chunk_stats": {
                             "count": 0,
                             "char_min": 0,
@@ -1504,7 +1506,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         exit_code, report_path = run(args)
         print(f"Validation report written to: {report_path}")
-        print(f"Exit code: {exit_code} ({'FAIL findings present' if exit_code == 1 else 'no FAIL findings'})")
+        print(
+            f"Exit code: {exit_code} ({'FAIL findings present' if exit_code == 1 else 'no FAIL findings'})"
+        )
         return exit_code
     except Exception as exc:
         print(f"Validation failed due to runtime/query error: {exc}", file=sys.stderr)

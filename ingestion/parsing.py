@@ -5,9 +5,9 @@ Each parser implements the Parser protocol from core.interfaces.
 ParserFactory automatically selects the appropriate parser based on source type.
 """
 
+import logging
 import os
 import re
-import logging
 import warnings
 from typing import Optional
 
@@ -16,19 +16,20 @@ from dotenv import load_dotenv
 from llama_cloud_services import LlamaParse
 from markdownify import markdownify as md
 
+from core.exceptions import ConfigurationError, ParsingError
 from core.interfaces import Parser, ParseResult
-from core.exceptions import ParsingError, ConfigurationError
 
 logger = logging.getLogger(__name__)
 
 # Load environment variables from the project's .env file
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
 
 # ============================================================================
 # CONCRETE PARSER IMPLEMENTATIONS
 # ============================================================================
+
 
 class URLParser:
     """Parser for web URLs using requests + markdownify."""
@@ -73,8 +74,8 @@ class URLParser:
                 metadata={
                     "source_url": source,
                     "content_type": response.headers.get("content-type"),
-                    "status_code": response.status_code
-                }
+                    "status_code": response.status_code,
+                },
             )
 
         except requests.exceptions.RequestException as e:
@@ -158,10 +159,7 @@ class PDFParser:
             return ParseResult(
                 content=full_markdown,
                 title=title,
-                metadata={
-                    "source_file": source,
-                    "page_count": len(markdown_documents)
-                }
+                metadata={"source_file": source, "page_count": len(markdown_documents)},
             )
 
         except Exception as e:
@@ -180,6 +178,7 @@ class PDFParser:
 # ============================================================================
 # PARSER FACTORY
 # ============================================================================
+
 
 class ParserFactory:
     """
@@ -251,6 +250,7 @@ class ParserFactory:
 # BACKWARD COMPATIBILITY (DEPRECATED)
 # ============================================================================
 
+
 def html_to_markdown(url: str) -> str | None:
     """
     Convert HTML content from a given URL to Markdown format.
@@ -271,7 +271,7 @@ def html_to_markdown(url: str) -> str | None:
     warnings.warn(
         "html_to_markdown() is deprecated. Use ParserFactory.parse() instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     try:
         result = URLParser().parse(url)
@@ -301,7 +301,7 @@ def parse_pdf(file_path: str) -> str | None:
     warnings.warn(
         "parse_pdf() is deprecated. Use ParserFactory.parse() instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     try:
         result = PDFParser().parse(file_path)

@@ -18,13 +18,9 @@ def _build_orchestrator() -> IngestionOrchestrator:
 
 
 def test_parse_reprocess_mode_accepts_strings_and_enum():
+    assert IngestionOrchestrator._parse_reprocess_mode("full") == ReprocessMode.FULL
     assert (
-        IngestionOrchestrator._parse_reprocess_mode("full")
-        == ReprocessMode.FULL
-    )
-    assert (
-        IngestionOrchestrator._parse_reprocess_mode("from_chunking")
-        == ReprocessMode.FROM_CHUNKING
+        IngestionOrchestrator._parse_reprocess_mode("from_chunking") == ReprocessMode.FROM_CHUNKING
     )
     assert (
         IngestionOrchestrator._parse_reprocess_mode(ReprocessMode.FROM_EMBEDDING)

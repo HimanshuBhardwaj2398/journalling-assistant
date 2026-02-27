@@ -6,18 +6,17 @@ This service should be used for all delete operations to prevent orphaned embedd
 """
 
 import asyncio
-import os
 import logging
-from typing import List, Optional, Dict, Any
+import os
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-from db.database import session_scope
-from db.crud import DocumentCRUD, ChunkCRUD, get_all_collections
-from db.schema import Document, DocumentStatus
-from ingestion.embed import VectorStoreManager, VectorStoreConfig, VectorStoreError
-from ingestion.orchestrator import IngestionOrchestrator
 from core.exceptions import CollectionError, DocumentNotFoundError
-
+from db.crud import ChunkCRUD, DocumentCRUD, get_all_collections
+from db.database import session_scope
+from db.schema import DocumentStatus
+from ingestion.embed import VectorStoreConfig, VectorStoreError, VectorStoreManager
+from ingestion.orchestrator import IngestionOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -135,17 +134,13 @@ class CollectionService:
             doc_title = doc.title
             chunk_count = len(chunks)
 
-        logger.info(
-            f"Deleting document {document_id} '{doc_title}' with {chunk_count} chunks"
-        )
+        logger.info(f"Deleting document {document_id} '{doc_title}' with {chunk_count} chunks")
 
         # Step 2: Delete from vector store FIRST
         embeddings_deleted = 0
         if chunk_uuids:
             try:
-                embeddings_deleted = self.vector_store_manager.delete_by_ids(
-                    chunk_uuids
-                )
+                embeddings_deleted = self.vector_store_manager.delete_by_ids(chunk_uuids)
                 logger.info(f"Deleted {embeddings_deleted} embeddings from vector store")
             except VectorStoreError as e:
                 logger.error(f"Vector store delete failed: {e}")
@@ -165,8 +160,7 @@ class CollectionService:
             if not doc_crud.delete_document(document_id):
                 # This shouldn't happen since we verified doc exists above
                 logger.error(
-                    f"App DB delete failed for document {document_id} "
-                    f"(embeddings already deleted)"
+                    f"App DB delete failed for document {document_id} (embeddings already deleted)"
                 )
                 return DeleteResult(
                     document_id=document_id,
@@ -313,9 +307,7 @@ class CollectionService:
         embeddings_deleted = 0
         if chunk_uuids:
             try:
-                embeddings_deleted = self.vector_store_manager.delete_by_ids(
-                    chunk_uuids
-                )
+                embeddings_deleted = self.vector_store_manager.delete_by_ids(chunk_uuids)
                 logger.info(f"Deleted {embeddings_deleted} old embeddings")
             except VectorStoreError as e:
                 logger.error(f"Vector store delete failed: {e}")
@@ -430,9 +422,7 @@ class CollectionService:
             chunk_crud = ChunkCRUD(session)
 
             all_docs = doc_crud.get_all_documents()
-            total_chunks = sum(
-                len(chunk_crud.get_chunks_by_document(doc.id)) for doc in all_docs
-            )
+            total_chunks = sum(len(chunk_crud.get_chunks_by_document(doc.id)) for doc in all_docs)
 
         return {
             "collection_name": target_collection,

@@ -1,12 +1,14 @@
 """Tests for pipeline progress callback."""
-import pytest
+
 import asyncio
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
+
 from core.interfaces import PipelineContext, PipelineStage, StageStatus
 
 
 class FakeStage(PipelineStage):
     """Minimal stage for testing."""
+
     def __init__(self, stage_name: str, deps=None):
         self._name = stage_name
         self._deps = deps or []
@@ -33,7 +35,7 @@ class TestPipelineCallback:
         pipeline = PipelineOrchestrator(stages)
 
         context = PipelineContext()
-        result = asyncio.run(pipeline.execute(context, on_stage_update=callback))
+        asyncio.run(pipeline.execute(context, on_stage_update=callback))
 
         # Should be called with running + completed for each stage = 4 calls
         assert callback.call_count == 4
@@ -50,16 +52,18 @@ class TestPipelineCallback:
             @property
             def name(self):
                 return "bad_stage"
+
             @property
             def required_stages(self):
                 return []
+
             async def execute(self, context):
                 raise ValueError("something broke")
 
         callback = MagicMock()
         pipeline = PipelineOrchestrator([FailingStage()])
         context = PipelineContext()
-        result = asyncio.run(pipeline.execute(context, on_stage_update=callback))
+        asyncio.run(pipeline.execute(context, on_stage_update=callback))
 
         callback.assert_any_call("bad_stage", StageStatus.RUNNING)
         callback.assert_any_call("bad_stage", StageStatus.FAILED)

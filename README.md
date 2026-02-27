@@ -136,6 +136,24 @@ Source Documents (PDF/URL)
    init_db()
    ```
 
+## Code Quality
+
+Run linting and formatting checks:
+
+```bash
+poetry run ruff check .
+poetry run ruff format --check .
+```
+
+Auto-fix lint issues and apply formatting:
+
+```bash
+poetry run ruff check . --fix
+poetry run ruff format .
+```
+
+Quality checks run automatically in GitHub Actions on pushes and pull requests targeting `main`.
+
 ## Usage
 
 ### Web Interface (Streamlit)

@@ -4,12 +4,14 @@ Supports both local PostgreSQL and Supabase with optimized pooling.
 """
 
 import logging
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
 
-from .schema import Base
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+
 from config.settings import get_settings
+
+from .schema import Base
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +78,7 @@ def init_db():
         with engine.connect() as connection:
             result = connection.execute(
                 text(
-                    "SELECT tablename FROM pg_tables "
-                    "WHERE schemaname = 'public' "
-                    "ORDER BY tablename"
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
                 )
             )
             tables = [row[0] for row in result]

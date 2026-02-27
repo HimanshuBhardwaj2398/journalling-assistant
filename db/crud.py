@@ -1,6 +1,8 @@
-from typing import List, Optional, Dict, Any
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from . import schema
 
 
@@ -14,9 +16,7 @@ def get_all_collections(session: Session) -> List[str]:
     Returns:
         List of collection names sorted alphabetically
     """
-    result = session.execute(
-        text("SELECT name FROM langchain_pg_collection ORDER BY name")
-    )
+    result = session.execute(text("SELECT name FROM langchain_pg_collection ORDER BY name"))
     return [row[0] for row in result.fetchall()]
 
 
@@ -75,11 +75,7 @@ class DocumentCRUD:
         Returns:
             Document instance or None if not found
         """
-        return (
-            self.db.query(schema.Document)
-            .filter(schema.Document.id == document_id)
-            .first()
-        )
+        return self.db.query(schema.Document).filter(schema.Document.id == document_id).first()
 
     def get_all_documents(self) -> List[schema.Document]:
         """
@@ -248,11 +244,7 @@ class DocumentCRUD:
         Returns:
             Document instance or None if not found
         """
-        return (
-            self.db.query(schema.Document)
-            .filter(schema.Document.file_path == file_path)
-            .first()
-        )
+        return self.db.query(schema.Document).filter(schema.Document.file_path == file_path).first()
 
     def check_duplicate(self, file_path: str) -> Optional[schema.Document]:
         """
@@ -361,11 +353,7 @@ class ChunkCRUD:
         Returns:
             Chunk instance or None
         """
-        return (
-            self.db.query(schema.Chunk)
-            .filter(schema.Chunk.uuid == uuid)
-            .first()
-        )
+        return self.db.query(schema.Chunk).filter(schema.Chunk.uuid == uuid).first()
 
     def update_chunk_metadata(
         self,
@@ -384,11 +372,7 @@ class ChunkCRUD:
         Returns:
             Updated chunk or None if not found
         """
-        chunk = (
-            self.db.query(schema.Chunk)
-            .filter(schema.Chunk.id == chunk_id)
-            .first()
-        )
+        chunk = self.db.query(schema.Chunk).filter(schema.Chunk.id == chunk_id).first()
         if chunk:
             if merge and chunk.chunk_metadata:
                 chunk.chunk_metadata = {**chunk.chunk_metadata, **metadata_updates}
@@ -409,9 +393,7 @@ class ChunkCRUD:
             Number of chunks deleted
         """
         deleted = (
-            self.db.query(schema.Chunk)
-            .filter(schema.Chunk.document_id == document_id)
-            .delete()
+            self.db.query(schema.Chunk).filter(schema.Chunk.document_id == document_id).delete()
         )
         self.db.commit()
         return deleted
