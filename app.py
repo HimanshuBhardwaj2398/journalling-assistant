@@ -20,7 +20,7 @@ load_dotenv()
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from views import ingest, queue, browse, stats
+from views import browse, ingest, queue, stats, validation  # noqa: E402
 
 # Page configuration
 st.set_page_config(
@@ -47,7 +47,13 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["Ingest New Document", "Processing Queue", "Browse Database", "Statistics"],
+        [
+            "Ingest New Document",
+            "Processing Queue",
+            "Browse Database",
+            "Statistics",
+            "Validation",
+        ],
         label_visibility="collapsed",
     )
 
@@ -63,3 +69,5 @@ elif page == "Browse Database":
     browse.render()
 elif page == "Statistics":
     stats.render()
+elif page == "Validation":
+    validation.render()

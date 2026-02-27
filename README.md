@@ -49,7 +49,8 @@ Source Documents (PDF/URL)
 │   ├── ingest.py            # Document ingestion UI
 │   ├── queue.py             # Processing queue monitor
 │   ├── browse.py            # Database browser
-│   └── stats.py             # Analytics dashboard
+│   ├── stats.py             # Analytics dashboard
+│   └── validation.py        # Chunk/TOC validation UI
 │
 ├── services/                # Business logic layer
 │   └── ingestion_service.py # Ingestion orchestration service
@@ -145,7 +146,7 @@ The easiest way to interact with the database is through the Streamlit web inter
 streamlit run app.py
 ```
 
-The interface provides four main views:
+The interface provides five main views:
 
 1. **Ingest New Document**: Upload PDFs or provide URLs to add new texts
    - Drag-and-drop file upload
@@ -170,6 +171,13 @@ The interface provides four main views:
    - Processing success/failure rates
    - Storage metrics
    - Tag distribution
+
+5. **Validation**: Run integrity checks and inspect a visual report
+   - Validation modes: random sample, single document, multiple documents
+   - Chunk order/reconstruction checks
+   - Markdown headers vs TOC coverage checks
+   - Chunk metadata checks with per-document drilldown
+   - Downloadable markdown report output
 
 ![Streamlit Interface](docs/images/streamlit-ui.png)
 
@@ -238,6 +246,38 @@ with session_scope() as session:
 
     # Retrieve documents
     all_docs = crud.get_all_documents()
+```
+
+## Validation And Testing
+
+### Run integrity audit from CLI
+
+```bash
+poetry run python scripts/validate_chunk_toc_integrity.py \
+  --sample-size 5 \
+  --seed 42 \
+  --chunk-sample-per-doc 3 \
+  --check-embeddings \
+  --output reports/chunk_toc_validation.md
+```
+
+### Run integrity audit from UI
+
+1. Start Streamlit:
+   ```bash
+   streamlit run app.py
+   ```
+2. Open the **Validation** page.
+3. Choose mode:
+   - `Random sample`
+   - `Single document`
+   - `Multiple documents`
+4. Run validation and review the report cards/tables.
+
+### Run validator unit tests
+
+```bash
+poetry run pytest tests/test_chunk_toc_validation.py
 ```
 
 ## Source Texts
