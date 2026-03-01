@@ -55,3 +55,7 @@ CLAUDE.md
 
 # Git worktrees
 .worktrees/
+
+# Eval dataset outputs (generated artifacts, not tracked)
+data/eval_dataset.jsonl
+data/*.png
