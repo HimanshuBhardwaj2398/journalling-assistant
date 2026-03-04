@@ -55,3 +55,8 @@ CLAUDE.md
 
 # Git worktrees
 .worktrees/
+
+# Internal planning & sprint docs (not end-user docs)
+docs/plans/
+docs/sprints/
+docs/deployment/

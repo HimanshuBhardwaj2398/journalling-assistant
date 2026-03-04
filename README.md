@@ -17,7 +17,7 @@ Source Documents → Parsing → Semantic Chunking → Embedding → PostgreSQL 
 | Component | Technology |
 |-----------|------------|
 | Database | PostgreSQL + pgvector |
-| ORM | SQLAlchemy 2.0 |
+| ORM | SQLAlchemy 2.0 + Alembic |
 | Web UI | Streamlit |
 | Embeddings | Voyage AI (`voyage-3.5`) |
 | PDF Parsing | LlamaParse |
@@ -40,7 +40,7 @@ cp .env.example .env   # Then fill in your API keys
 
 **Initialize the database**:
 ```bash
-poetry run python -c "from db.database import init_db; init_db()"
+poetry run alembic upgrade head
 ```
 
 ## Usage
@@ -48,10 +48,35 @@ poetry run python -c "from db.database import init_db; init_db()"
 ### Web Interface
 
 ```bash
-streamlit run app.py
+poetry run streamlit run app.py
 ```
 
-The Streamlit UI provides pages for document ingestion, processing queue monitoring, database browsing, statistics, and chunk/TOC validation.
+The Streamlit UI provides:
+- **Ingest** — add documents (PDF or URL) with metadata (type, category, tags)
+- **Queue** — monitor processing status in real time
+- **Browse** — filter and explore ingested documents
+- **Document Detail** — browse individual chunks and TOC
+- **Validation** — verify chunk and embedding integrity
+- **Statistics** — corpus overview with charts
+
+See [docs/UI_GUIDE.md](docs/UI_GUIDE.md) for detailed usage.
+
+### CLI
+
+```bash
+# Ingest a PDF
+poetry run python scripts/ingest.py "Books/sutra.pdf" \
+  --title "Diamond Sutra" --type ancient_text --category buddhism
+
+# Ingest from URL
+poetry run python scripts/ingest.py "https://suttacentral.net/dn1"
+
+# Reprocess an existing document
+poetry run python scripts/ingest.py --resume 5
+
+# List all documents
+poetry run python scripts/ingest.py --list
+```
 
 ### Programmatic Access
 
@@ -59,8 +84,8 @@ The Streamlit UI provides pages for document ingestion, processing queue monitor
 from ingestion.orchestrator import IngestionOrchestrator
 
 orchestrator = IngestionOrchestrator()
-orchestrator.process("path/to/text.pdf")       # Ingest a PDF
-orchestrator.process("https://example.com/article")  # Ingest from URL
+orchestrator.process("path/to/text.pdf")
+orchestrator.process("https://example.com/article")
 ```
 
 ## Code Quality
@@ -68,17 +93,18 @@ orchestrator.process("https://example.com/article")  # Ingest from URL
 ```bash
 poetry run ruff check .          # Lint
 poetry run ruff format --check . # Format check
+poetry run pytest                # Tests
 ```
 
-Checks run automatically via GitHub Actions on pushes and PRs to `main`.
+Lint and format checks run automatically via GitHub Actions on pushes and PRs to `main`.
 
 ## Roadmap
 
-- **Phase 1 (Current)**: Data ingestion pipeline, semantic chunking, vector storage
-- **Phase 2**: RAG and GraphRAG query APIs with citation tracking
-- **Phase 3**: Application integration — journaling, practice guidance, path exploration
+- **Phase 1 (Complete)**: Data ingestion pipeline, semantic chunking, vector storage, Streamlit UI
+- **Phase 2 (In Progress)**: RAG retrieval evaluation, query API with citation tracking
+- **Phase 3 (Planned)**: Application integration — journaling, practice guidance, path exploration
 
-See [ROADMAP.md](docs/ROADMAP.md) for details.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
 
 ## License
 
