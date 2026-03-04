@@ -50,6 +50,7 @@ openai = ">=1.91.1,<2.0.0"
 
 # UI and visualization
 streamlit = ">=1.30.0,<2.0.0"
+litellm = ">=1.40.0,<2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools
