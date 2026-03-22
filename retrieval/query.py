@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores.pgvector import PGVector
 from langchain_core.documents import Document
 from langchain_voyageai import VoyageAIEmbeddings
@@ -95,7 +94,7 @@ class SearchTrace:
     started_at: str
     duration_ms: float
     total_results: int
-    bm25_chunk_count: int = 0
+    fts_query_used: bool = False
     langfuse_trace_id: Optional[str] = None
     langfuse_trace_url: Optional[str] = None
     notes: List[str] = field(default_factory=list)
@@ -104,7 +103,7 @@ class SearchTrace:
 class RetrievalEngine:
     """Unified search interface over the meditation knowledge base.
 
-    Wraps the existing VectorStoreManager and adds BM25 for hybrid search.
+    Wraps the existing VectorStoreManager and adds PostgreSQL FTS for hybrid search.
     Supports four retrieval strategies: similarity, MMR, threshold, and hybrid.
 
     The engine lazily initializes its components (vector store, BM25 index)
@@ -125,8 +124,7 @@ class RetrievalEngine:
 
         # Lazily initialized
         self._vector_store: Optional[PGVector] = None
-        self._bm25_retriever: Optional[BM25Retriever] = None
-        self._all_chunks: Optional[List[Dict]] = None
+        self._all_chunks: None = None  # kept for test assertions; never populated
         self._embeddings: Optional[VoyageAIEmbeddings] = None
 
     # ------------------------------------------------------------------
@@ -151,49 +149,37 @@ class RetrievalEngine:
             logger.info(f"Connected to vector store: {self._collection_name}")
         return self._vector_store
 
-    def _load_chunks_for_bm25(self) -> List[Document]:
-        """Load all chunk texts from the database for BM25 indexing."""
-        if self._all_chunks is not None:
-            return [
-                Document(
-                    page_content=c["chunk_text"],
-                    metadata={
-                        **(c["chunk_metadata"] or {}),
-                        "uuid": c["uuid"],
-                        "document_id": c["document_id"],
-                    },
-                )
-                for c in self._all_chunks
-            ]
-
-        self._all_chunks = []
+    def _bm25_search(self, query: str, k: int = 5) -> List[Document]:
+        """Full-text search using PostgreSQL tsvector (replaces in-memory BM25)."""
         with session_scope() as session:
             result = session.execute(
                 text(
-                    "SELECT uuid, chunk_text, chunk_metadata, document_id "
-                    "FROM chunks ORDER BY document_id, chunk_index"
-                )
+                    """
+                    SELECT c.uuid, c.chunk_text, c.chunk_metadata, c.document_id,
+                           ts_rank(to_tsvector('english', c.chunk_text),
+                                   plainto_tsquery('english', :query)) AS fts_score
+                    FROM chunks c
+                    WHERE to_tsvector('english', c.chunk_text) @@ plainto_tsquery('english', :query)
+                    ORDER BY fts_score DESC
+                    LIMIT :k
+                    """
+                ),
+                {"query": query, "k": k},
             )
-            for row in result.fetchall():
-                self._all_chunks.append(
-                    {
-                        "uuid": row[0],
-                        "chunk_text": row[1],
-                        "chunk_metadata": row[2] or {},
-                        "document_id": row[3],
-                    }
-                )
+            rows = result.fetchall()
 
-        logger.info(f"Loaded {len(self._all_chunks)} chunks for BM25")
-        return self._load_chunks_for_bm25()
-
-    @property
-    def bm25_retriever(self) -> BM25Retriever:
-        if self._bm25_retriever is None:
-            docs = self._load_chunks_for_bm25()
-            self._bm25_retriever = BM25Retriever.from_documents(docs, k=5)
-            logger.info("BM25 index built")
-        return self._bm25_retriever
+        return [
+            Document(
+                page_content=row[1],
+                metadata={
+                    **(row[2] or {}),
+                    "uuid": row[0],
+                    "document_id": row[3],
+                    "_fts_score": float(row[4]),
+                },
+            )
+            for row in rows
+        ]
 
     # ------------------------------------------------------------------
     # Search strategies
@@ -273,7 +259,7 @@ class RetrievalEngine:
                 },
                 metadata={
                     "status": "completed",
-                    "bm25_chunk_count": len(self._all_chunks or []),
+                    "fts_query_used": strategy == RetrievalStrategy.HYBRID,
                 },
             )
 
@@ -286,7 +272,7 @@ class RetrievalEngine:
                 started_at=started_at,
                 duration_ms=(time.perf_counter() - started) * 1000,
                 total_results=len(results),
-                bm25_chunk_count=len(self._all_chunks or []),
+                fts_query_used=strategy == RetrievalStrategy.HYBRID,
                 langfuse_trace_id=observation.trace_id,
                 langfuse_trace_url=observation.trace_url,
                 notes=notes,
@@ -348,20 +334,13 @@ class RetrievalEngine:
         ]
 
     def _hybrid_search(self, query: str, k: int = 5, **kwargs) -> List[SearchResult]:
-        """Hybrid BM25 + semantic search with reciprocal rank fusion."""
-        # Get results from both retrievers
+        """Hybrid FTS + semantic search with reciprocal rank fusion."""
         semantic_retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
-
-        # Update BM25 k to match
-        self.bm25_retriever.k = k
-
-        # Run both
         semantic_results = semantic_retriever.invoke(query)
-        bm25_results = self.bm25_retriever.invoke(query)
+        fts_results = self._bm25_search(query, k=k)
 
-        # Reciprocal Rank Fusion
         fused = self._reciprocal_rank_fusion(
-            [semantic_results, bm25_results],
+            [semantic_results, fts_results],
             weights=[0.6, 0.4],
             k=k,
         )
@@ -425,8 +404,8 @@ class RetrievalEngine:
                 f"Threshold search only keeps semantic matches at or above {score_threshold:.2f}.",
             ],
             RetrievalStrategy.HYBRID: [
-                "Hybrid search combines semantic retrieval and BM25 keyword matches.",
-                "Results are merged with weighted reciprocal rank fusion (semantic 0.6, BM25 0.4).",
+                "Hybrid search combines semantic retrieval and PostgreSQL full-text search.",
+                "Results are merged with weighted reciprocal rank fusion (semantic 0.6, FTS 0.4).",
             ],
         }
         return notes.get(strategy, []).copy()

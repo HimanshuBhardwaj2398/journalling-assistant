@@ -96,7 +96,7 @@ def test_search_trace_dict_includes_langfuse_fields(monkeypatch):
             "score_threshold": 0.5,
             "started_at": "2026-03-22T00:00:00+00:00",
             "duration_ms": 12.3,
-            "bm25_chunk_count": 100,
+            "fts_query_used": True,
             "langfuse_trace_id": "trace-search-1",
             "langfuse_trace_url": "https://langfuse.local/trace/trace-search-1",
             "notes": ["note"],

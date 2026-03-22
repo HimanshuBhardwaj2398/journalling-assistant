@@ -157,7 +157,7 @@ def _search_trace_to_dict(response: SearchResponse) -> dict[str, Any]:
         "started_at": trace.started_at,
         "duration_ms": round(trace.duration_ms, 2),
         "total_results": response.total_results,
-        "bm25_chunk_count": trace.bm25_chunk_count,
+        "fts_query_used": trace.fts_query_used,
         "langfuse_trace_id": trace.langfuse_trace_id,
         "langfuse_trace_url": trace.langfuse_trace_url,
         "notes": trace.notes,
@@ -410,8 +410,8 @@ def render() -> None:
     metrics_col2.metric("Strategy", _strategy_label(response.strategy))
     duration_ms = response.trace.duration_ms if response.trace is not None else 0.0
     metrics_col3.metric("Search Latency", f"{duration_ms:.0f} ms")
-    bm25_size = response.trace.bm25_chunk_count if response.trace is not None else 0
-    metrics_col4.metric("BM25 Index Size", bm25_size)
+    fts_used = response.trace.fts_query_used if response.trace is not None else False
+    metrics_col4.metric("FTS Used", "Yes" if fts_used else "No")
 
     tab_labels = ["Retrieved Chunks", "Trace"]
     if answer_response is not None:
