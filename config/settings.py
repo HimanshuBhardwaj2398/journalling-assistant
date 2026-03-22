@@ -194,6 +194,18 @@ class Settings(BaseSettings):
             v = os.getenv("HF_TOKEN")
         return v
 
+    @field_validator("debug", mode="before")
+    @classmethod
+    def validate_debug(cls, v):
+        """Accept common environment-style debug aliases."""
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"debug", "dev", "development"}:
+                return True
+        return v
+
     def model_post_init(self, __context) -> None:
         """Validate settings after initialization."""
         if self.chunking.max_size <= self.chunking.min_size:

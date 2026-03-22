@@ -1,0 +1,411 @@
+"""
+Core retrieval engine for the meditation knowledge base.
+
+Provides a unified interface for multiple search strategies over existing
+pgvector embeddings. Designed to be imported by the RAG pipeline, Streamlit UI,
+and future API endpoints.
+
+Usage:
+    from retrieval.query import RetrievalEngine, RetrievalStrategy
+
+    engine = RetrievalEngine()
+    results = engine.search("what is mindfulness?", strategy=RetrievalStrategy.HYBRID, k=5)
+    for r in results:
+        print(f"[{r.score:.3f}] {r.text[:100]}... (from {r.source_title})")
+"""
+
+import enum
+import logging
+import os
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from langchain_community.retrievers import BM25Retriever
+from langchain_community.vectorstores.pgvector import PGVector
+from langchain_core.documents import Document
+from langchain_voyageai import VoyageAIEmbeddings
+from sqlalchemy import text
+
+from db.database import session_scope
+
+logger = logging.getLogger(__name__)
+
+
+class RetrievalStrategy(enum.Enum):
+    """Available retrieval strategies."""
+
+    SIMILARITY = "similarity"
+    MMR = "mmr"
+    THRESHOLD = "threshold"
+    HYBRID = "hybrid"
+
+
+@dataclass
+class SearchResult:
+    """A single search result with provenance tracking.
+
+    Attributes:
+        text: The chunk text content.
+        score: Relevance score (higher = more relevant). None for strategies
+               that don't produce raw scores (MMR, hybrid).
+        chunk_uuid: UUID linking to langchain_pg_embedding and chunks tables.
+        document_id: Parent document ID in the documents table.
+        source_title: Title of the source document.
+        chunk_index: Position of this chunk within the parent document.
+        metadata: Full chunk metadata (headers, semantic boundaries, etc.).
+        rank: Position in result list (1-indexed).
+    """
+
+    text: str
+    score: Optional[float] = None
+    chunk_uuid: Optional[str] = None
+    document_id: Optional[int] = None
+    source_title: Optional[str] = None
+    chunk_index: Optional[int] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    rank: int = 0
+
+
+@dataclass
+class SearchResponse:
+    """Container for search results with metadata about the search itself."""
+
+    query: str
+    strategy: RetrievalStrategy
+    results: List[SearchResult]
+    trace: Optional["SearchTrace"] = None
+    total_results: int = 0
+
+    def __post_init__(self):
+        self.total_results = len(self.results)
+
+
+@dataclass
+class SearchTrace:
+    """Debug-friendly metadata describing how a search was executed."""
+
+    collection_name: str
+    embedding_model: str
+    requested_k: int
+    fetch_k: int
+    score_threshold: float
+    started_at: str
+    duration_ms: float
+    total_results: int
+    bm25_chunk_count: int = 0
+    notes: List[str] = field(default_factory=list)
+
+
+class RetrievalEngine:
+    """Unified search interface over the meditation knowledge base.
+
+    Wraps the existing VectorStoreManager and adds BM25 for hybrid search.
+    Supports four retrieval strategies: similarity, MMR, threshold, and hybrid.
+
+    The engine lazily initializes its components (vector store, BM25 index)
+    on first use so construction is cheap.
+    """
+
+    def __init__(
+        self,
+        collection_name: str = "documents",
+        db_url: Optional[str] = None,
+        embedding_model: str = "voyage-3.5",
+    ):
+        self._collection_name = collection_name
+        self._db_url = db_url or os.getenv("DB_URL") or os.getenv("DATABASE_URL")
+        self._embedding_model = embedding_model
+
+        # Lazily initialized
+        self._vector_store: Optional[PGVector] = None
+        self._bm25_retriever: Optional[BM25Retriever] = None
+        self._all_chunks: Optional[List[Dict]] = None
+        self._embeddings: Optional[VoyageAIEmbeddings] = None
+
+    # ------------------------------------------------------------------
+    # Lazy initialization
+    # ------------------------------------------------------------------
+
+    @property
+    def embeddings(self) -> VoyageAIEmbeddings:
+        if self._embeddings is None:
+            self._embeddings = VoyageAIEmbeddings(model=self._embedding_model)
+        return self._embeddings
+
+    @property
+    def vector_store(self) -> PGVector:
+        if self._vector_store is None:
+            self._vector_store = PGVector(
+                connection_string=self._db_url,
+                embedding_function=self.embeddings,
+                collection_name=self._collection_name,
+                use_jsonb=True,
+            )
+            logger.info(f"Connected to vector store: {self._collection_name}")
+        return self._vector_store
+
+    def _load_chunks_for_bm25(self) -> List[Document]:
+        """Load all chunk texts from the database for BM25 indexing."""
+        if self._all_chunks is not None:
+            return [
+                Document(
+                    page_content=c["chunk_text"],
+                    metadata={
+                        **(c["chunk_metadata"] or {}),
+                        "uuid": c["uuid"],
+                        "document_id": c["document_id"],
+                    },
+                )
+                for c in self._all_chunks
+            ]
+
+        self._all_chunks = []
+        with session_scope() as session:
+            result = session.execute(
+                text(
+                    "SELECT uuid, chunk_text, chunk_metadata, document_id "
+                    "FROM chunks ORDER BY document_id, chunk_index"
+                )
+            )
+            for row in result.fetchall():
+                self._all_chunks.append(
+                    {
+                        "uuid": row[0],
+                        "chunk_text": row[1],
+                        "chunk_metadata": row[2] or {},
+                        "document_id": row[3],
+                    }
+                )
+
+        logger.info(f"Loaded {len(self._all_chunks)} chunks for BM25")
+        return self._load_chunks_for_bm25()
+
+    @property
+    def bm25_retriever(self) -> BM25Retriever:
+        if self._bm25_retriever is None:
+            docs = self._load_chunks_for_bm25()
+            self._bm25_retriever = BM25Retriever.from_documents(docs, k=5)
+            logger.info("BM25 index built")
+        return self._bm25_retriever
+
+    # ------------------------------------------------------------------
+    # Search strategies
+    # ------------------------------------------------------------------
+
+    def search(
+        self,
+        query: str,
+        strategy: RetrievalStrategy = RetrievalStrategy.HYBRID,
+        k: int = 5,
+        score_threshold: float = 0.5,
+        fetch_k: int = 20,
+    ) -> SearchResponse:
+        """Run a search using the specified strategy.
+
+        Args:
+            query: Natural language search query.
+            strategy: Which retrieval strategy to use.
+            k: Number of results to return.
+            score_threshold: Minimum score for threshold strategy.
+            fetch_k: Candidate pool size for MMR.
+
+        Returns:
+            SearchResponse with ranked results.
+        """
+        started_at = datetime.now(timezone.utc).isoformat()
+        started = time.perf_counter()
+        strategy_map = {
+            RetrievalStrategy.SIMILARITY: self._similarity_search,
+            RetrievalStrategy.MMR: self._mmr_search,
+            RetrievalStrategy.THRESHOLD: self._threshold_search,
+            RetrievalStrategy.HYBRID: self._hybrid_search,
+        }
+
+        search_fn = strategy_map[strategy]
+        results = search_fn(query, k=k, score_threshold=score_threshold, fetch_k=fetch_k)
+
+        # Enrich results with document titles
+        self._enrich_with_document_info(results)
+
+        notes = self._build_trace_notes(strategy, score_threshold=score_threshold)
+        trace = SearchTrace(
+            collection_name=self._collection_name,
+            embedding_model=self._embedding_model,
+            requested_k=k,
+            fetch_k=fetch_k,
+            score_threshold=score_threshold,
+            started_at=started_at,
+            duration_ms=(time.perf_counter() - started) * 1000,
+            total_results=len(results),
+            bm25_chunk_count=len(self._all_chunks or []),
+            notes=notes,
+        )
+        return SearchResponse(query=query, strategy=strategy, results=results, trace=trace)
+
+    def _similarity_search(self, query: str, k: int = 5, **kwargs) -> List[SearchResult]:
+        """Top-K similarity search using pgvector."""
+        raw = self.vector_store.similarity_search_with_score(query, k=k)
+        return [
+            SearchResult(
+                text=doc.page_content,
+                score=float(score),
+                chunk_uuid=doc.metadata.get("uuid"),
+                document_id=doc.metadata.get("document_id")
+                or doc.metadata.get("original_doc_id"),
+                metadata=doc.metadata,
+                rank=i + 1,
+            )
+            for i, (doc, score) in enumerate(raw)
+        ]
+
+    def _mmr_search(self, query: str, k: int = 5, fetch_k: int = 20, **kwargs) -> List[SearchResult]:
+        """Maximal Marginal Relevance search for diverse results."""
+        raw = self.vector_store.max_marginal_relevance_search(query, k=k, fetch_k=fetch_k)
+        return [
+            SearchResult(
+                text=doc.page_content,
+                score=None,
+                chunk_uuid=doc.metadata.get("uuid"),
+                document_id=doc.metadata.get("document_id")
+                or doc.metadata.get("original_doc_id"),
+                metadata=doc.metadata,
+                rank=i + 1,
+            )
+            for i, doc in enumerate(raw)
+        ]
+
+    def _threshold_search(
+        self, query: str, k: int = 5, score_threshold: float = 0.5, **kwargs
+    ) -> List[SearchResult]:
+        """Similarity search filtered by minimum score."""
+        retriever = self.vector_store.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"k": k, "score_threshold": score_threshold},
+        )
+        raw = retriever.invoke(query)
+        return [
+            SearchResult(
+                text=doc.page_content,
+                score=None,
+                chunk_uuid=doc.metadata.get("uuid"),
+                document_id=doc.metadata.get("document_id")
+                or doc.metadata.get("original_doc_id"),
+                metadata=doc.metadata,
+                rank=i + 1,
+            )
+            for i, doc in enumerate(raw)
+        ]
+
+    def _hybrid_search(self, query: str, k: int = 5, **kwargs) -> List[SearchResult]:
+        """Hybrid BM25 + semantic search with reciprocal rank fusion."""
+        # Get results from both retrievers
+        semantic_retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
+
+        # Update BM25 k to match
+        self.bm25_retriever.k = k
+
+        # Run both
+        semantic_results = semantic_retriever.invoke(query)
+        bm25_results = self.bm25_retriever.invoke(query)
+
+        # Reciprocal Rank Fusion
+        fused = self._reciprocal_rank_fusion(
+            [semantic_results, bm25_results],
+            weights=[0.6, 0.4],
+            k=k,
+        )
+
+        return [
+            SearchResult(
+                text=doc.page_content,
+                score=rrf_score,
+                chunk_uuid=doc.metadata.get("uuid"),
+                document_id=doc.metadata.get("document_id")
+                or doc.metadata.get("original_doc_id"),
+                metadata=doc.metadata,
+                rank=i + 1,
+            )
+            for i, (doc, rrf_score) in enumerate(fused)
+        ]
+
+    def _reciprocal_rank_fusion(
+        self,
+        result_lists: List[List[Document]],
+        weights: List[float],
+        k: int = 5,
+        rrf_k: int = 60,
+    ) -> List[tuple]:
+        """Combine multiple result lists using weighted Reciprocal Rank Fusion.
+
+        RRF score = sum(weight_i / (rrf_k + rank_i)) for each list i.
+        """
+        doc_scores: Dict[str, float] = {}
+        doc_map: Dict[str, Document] = {}
+
+        for results, weight in zip(result_lists, weights):
+            for rank, doc in enumerate(results, start=1):
+                # Use content hash as dedup key
+                key = doc.page_content[:200]
+                doc_map[key] = doc
+                doc_scores[key] = doc_scores.get(key, 0.0) + weight / (rrf_k + rank)
+
+        # Sort by RRF score descending
+        sorted_keys = sorted(doc_scores.keys(), key=lambda x: doc_scores[x], reverse=True)
+        return [(doc_map[key], doc_scores[key]) for key in sorted_keys[:k]]
+
+    # ------------------------------------------------------------------
+    # Enrichment
+    # ------------------------------------------------------------------
+
+    def _build_trace_notes(
+        self,
+        strategy: RetrievalStrategy,
+        score_threshold: float,
+    ) -> List[str]:
+        """Provide a concise explanation of the chosen retrieval strategy."""
+        notes = {
+            RetrievalStrategy.SIMILARITY: [
+                "Similarity search returns the closest vector matches from pgvector.",
+            ],
+            RetrievalStrategy.MMR: [
+                "MMR trades a little relevance for more diverse results.",
+            ],
+            RetrievalStrategy.THRESHOLD: [
+                f"Threshold search only keeps semantic matches at or above {score_threshold:.2f}.",
+            ],
+            RetrievalStrategy.HYBRID: [
+                "Hybrid search combines semantic retrieval and BM25 keyword matches.",
+                "Results are merged with weighted reciprocal rank fusion (semantic 0.6, BM25 0.4).",
+            ],
+        }
+        return notes.get(strategy, []).copy()
+
+    def _enrich_with_document_info(self, results: List[SearchResult]) -> None:
+        """Add source document titles and chunk indices to results."""
+        # Collect UUIDs that need enrichment
+        uuids_to_lookup = [r.chunk_uuid for r in results if r.chunk_uuid and not r.source_title]
+        if not uuids_to_lookup:
+            return
+
+        try:
+            with session_scope() as session:
+                placeholders = ", ".join([f":uuid_{i}" for i in range(len(uuids_to_lookup))])
+                query = text(
+                    f"SELECT c.uuid, c.chunk_index, c.document_id, d.title "
+                    f"FROM chunks c JOIN documents d ON c.document_id = d.id "
+                    f"WHERE c.uuid IN ({placeholders})"
+                )
+                params = {f"uuid_{i}": uid for i, uid in enumerate(uuids_to_lookup)}
+                rows = session.execute(query, params).fetchall()
+
+                lookup = {row[0]: row for row in rows}
+                for result in results:
+                    if result.chunk_uuid and result.chunk_uuid in lookup:
+                        row = lookup[result.chunk_uuid]
+                        result.chunk_index = row[1]
+                        result.document_id = row[2]
+                        result.source_title = row[3]
+        except Exception as e:
+            logger.warning(f"Could not enrich results with document info: {e}")

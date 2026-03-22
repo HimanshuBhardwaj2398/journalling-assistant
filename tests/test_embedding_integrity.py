@@ -33,10 +33,12 @@ class DifferentIdsManager:
 
 
 @pytest.mark.asyncio
-async def test_embedding_stage_sets_document_id_from_uuid():
+async def test_embedding_stage_sets_uuid_and_document_metadata():
     manager = EchoIdsManager()
     stage = EmbeddingStage(manager)
     context = PipelineContext(
+        document_id=42,
+        title="Meditation Manual",
         chunks=[
             Document(page_content="chunk one", metadata={}),
             Document(page_content="chunk two", metadata={}),
@@ -49,6 +51,9 @@ async def test_embedding_stage_sets_document_id_from_uuid():
     for doc in manager.last_documents:
         assert doc.id is not None
         assert doc.metadata["uuid"] == doc.id
+        assert doc.metadata["document_id"] == 42
+        assert doc.metadata["original_doc_id"] == 42
+        assert doc.metadata["source_title"] == "Meditation Manual"
 
 
 @pytest.mark.asyncio

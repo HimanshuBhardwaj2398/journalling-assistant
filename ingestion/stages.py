@@ -223,6 +223,11 @@ class EmbeddingStage(PipelineStage):
             # Add UUIDs to each chunk BEFORE embedding
             expected_ids = []
             for chunk in context.chunks:
+                if context.document_id is not None:
+                    chunk.metadata.setdefault("document_id", context.document_id)
+                    chunk.metadata.setdefault("original_doc_id", context.document_id)
+                if context.title:
+                    chunk.metadata.setdefault("source_title", context.title)
                 chunk_uuid = str(uuid_lib.uuid4())
                 chunk.metadata["uuid"] = chunk_uuid
                 # PGVector uses Document.id as the persisted vector ID.
