@@ -15,6 +15,7 @@ Usage:
 """
 
 import enum
+import hashlib
 import logging
 import os
 import time
@@ -98,6 +99,23 @@ class SearchTrace:
     langfuse_trace_id: Optional[str] = None
     langfuse_trace_url: Optional[str] = None
     notes: List[str] = field(default_factory=list)
+
+
+def _minmax_normalize(scores: list[float]) -> list[float]:
+    """Normalize a list of scores to [0, 1]. Returns 0.5 for uniform inputs."""
+    min_s, max_s = min(scores), max(scores)
+    rng = max_s - min_s
+    if rng == 0:
+        return [0.5] * len(scores)
+    return [(s - min_s) / rng for s in scores]
+
+
+def _doc_key(doc: Document) -> str:
+    """Stable dedup key: UUID when present, SHA-256 of content otherwise."""
+    uuid = doc.metadata.get("uuid")
+    if uuid:
+        return str(uuid)
+    return hashlib.sha256(doc.page_content.encode()).hexdigest()
 
 
 class RetrievalEngine:
@@ -339,6 +357,13 @@ class RetrievalEngine:
         semantic_results = semantic_retriever.invoke(query)
         fts_results = self._bm25_search(query, k=k)
 
+        # Normalize FTS scores before fusion so they're on the same [0,1] scale
+        fts_scores = [doc.metadata.get("_fts_score", 0.0) for doc in fts_results]
+        if fts_scores:
+            normed = _minmax_normalize(fts_scores)
+            for doc, norm_score in zip(fts_results, normed):
+                doc.metadata["_fts_score"] = norm_score
+
         fused = self._reciprocal_rank_fusion(
             [semantic_results, fts_results],
             weights=[0.6, 0.4],
@@ -374,8 +399,7 @@ class RetrievalEngine:
 
         for results, weight in zip(result_lists, weights):
             for rank, doc in enumerate(results, start=1):
-                # Use content hash as dedup key
-                key = doc.page_content[:200]
+                key = _doc_key(doc)
                 doc_map[key] = doc
                 doc_scores[key] = doc_scores.get(key, 0.0) + weight / (rrf_k + rank)
 
