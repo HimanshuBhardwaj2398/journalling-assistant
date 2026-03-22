@@ -9,42 +9,7 @@ from typing import List, Optional, Sequence
 from observability.langfuse import LangfuseTracer, get_langfuse_tracer
 from retrieval.llm_client import EvalLLMClient
 from retrieval.query import SearchResult
-
-
-def _extract_header_paths(metadata: dict | None) -> list[str]:
-    """Return a normalized list of header paths from chunk metadata."""
-    if not isinstance(metadata, dict):
-        return []
-
-    paths: list[str] = []
-
-    def add(raw: object) -> None:
-        if not isinstance(raw, str):
-            return
-        cleaned = " > ".join(part.strip() for part in raw.split(">") if part.strip())
-        if cleaned and cleaned not in paths:
-            paths.append(cleaned)
-
-    all_header_paths = metadata.get("all_header_paths", [])
-    if isinstance(all_header_paths, str):
-        add(all_header_paths)
-    elif isinstance(all_header_paths, list):
-        for path in all_header_paths:
-            add(path)
-
-    add(metadata.get("header_path"))
-    add(metadata.get("section_path"))
-
-    if not paths:
-        legacy_headers = []
-        for level in range(1, 7):
-            value = metadata.get(f"Header {level}")
-            if isinstance(value, str) and value.strip():
-                legacy_headers.append(value.strip())
-        if legacy_headers:
-            paths.append(" > ".join(legacy_headers))
-
-    return paths
+from retrieval.utils import extract_header_paths
 
 
 @dataclass
@@ -198,7 +163,7 @@ class GroundedAnswerService:
 
     def _build_context_block(self, result: SearchResult, label: int) -> str:
         """Format a single retrieved chunk for prompt context."""
-        header_paths = _extract_header_paths(result.metadata)
+        header_paths = extract_header_paths(result.metadata)
         source_title = result.source_title or f"Document {result.document_id or 'unknown'}"
         chunk_label = result.chunk_index if result.chunk_index is not None else "unknown"
         header_preview = ", ".join(header_paths[:2]) if header_paths else "(no header path)"
@@ -215,7 +180,7 @@ class GroundedAnswerService:
 
     def _build_citation(self, result: SearchResult, label: int) -> AnswerCitation:
         """Create a citation record for UI display."""
-        header_paths = _extract_header_paths(result.metadata)
+        header_paths = extract_header_paths(result.metadata)
         excerpt = result.text.strip().replace("\n", " ")
         if len(excerpt) > self._max_excerpt_chars:
             excerpt = excerpt[: self._max_excerpt_chars].rstrip() + "..."

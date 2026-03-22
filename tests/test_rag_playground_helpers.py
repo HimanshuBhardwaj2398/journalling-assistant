@@ -6,12 +6,12 @@ os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
 os.environ["DEBUG"] = "false"
 
 from retrieval.query import RetrievalStrategy, SearchResponse, SearchResult
+from retrieval.utils import extract_header_paths as _extract_header_paths
 from views.rag_playground import (
     _answer_trace_to_dict,
     _apply_post_filter,
     _build_result_rows,
     _citation_labels_in_answer,
-    _extract_header_paths,
     _format_score,
     _search_trace_to_dict,
 )
