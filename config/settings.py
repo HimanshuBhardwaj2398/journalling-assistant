@@ -157,6 +157,35 @@ class ChunkingSettings(BaseSettings):
         return v
 
 
+class LangfuseSettings(BaseSettings):
+    """Langfuse tracing configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="LANGFUSE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    public_key: Optional[str] = Field(default=None, description="Langfuse public API key")
+    secret_key: Optional[str] = Field(default=None, description="Langfuse secret API key")
+    base_url: str = Field(
+        default="https://cloud.langfuse.com",
+        description="Langfuse API base URL",
+    )
+    tracing_enabled: bool = Field(default=True, description="Enable Langfuse tracing")
+    tracing_environment: str = Field(
+        default="development",
+        description="Logical environment name for Langfuse traces",
+    )
+    release: Optional[str] = Field(default=None, description="App release or version label")
+
+    @property
+    def is_configured(self) -> bool:
+        """Return True when enough configuration is present to send traces."""
+        return bool(self.tracing_enabled and self.public_key and self.secret_key)
+
+
 class Settings(BaseSettings):
     """
     Root application settings.
@@ -183,6 +212,7 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     parsing: ParsingSettings = Field(default_factory=ParsingSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
+    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 
     @field_validator("hf_token", mode="before")
     @classmethod

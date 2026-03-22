@@ -7,11 +7,13 @@ os.environ["DEBUG"] = "false"
 
 from retrieval.query import RetrievalStrategy, SearchResponse, SearchResult
 from views.rag_playground import (
+    _answer_trace_to_dict,
     _apply_post_filter,
     _build_result_rows,
     _citation_labels_in_answer,
     _extract_header_paths,
     _format_score,
+    _search_trace_to_dict,
 )
 
 
@@ -74,3 +76,61 @@ def test_apply_post_filter_reduces_results(monkeypatch):
 
     assert filtered.total_results == 1
     assert filtered.results[0].document_id == 2
+
+
+def test_search_trace_dict_includes_langfuse_fields(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
+    response = SearchResponse(
+        query="What is suffering?",
+        strategy=RetrievalStrategy.SIMILARITY,
+        results=[],
+    )
+    response.trace = type(
+        "Trace",
+        (),
+        {
+            "collection_name": "documents",
+            "embedding_model": "voyage-3.5",
+            "requested_k": 5,
+            "fetch_k": 20,
+            "score_threshold": 0.5,
+            "started_at": "2026-03-22T00:00:00+00:00",
+            "duration_ms": 12.3,
+            "bm25_chunk_count": 100,
+            "langfuse_trace_id": "trace-search-1",
+            "langfuse_trace_url": "https://langfuse.local/trace/trace-search-1",
+            "notes": ["note"],
+        },
+    )()
+
+    payload = _search_trace_to_dict(response)
+
+    assert payload["langfuse_trace_id"] == "trace-search-1"
+    assert payload["langfuse_trace_url"] == "https://langfuse.local/trace/trace-search-1"
+
+
+def test_answer_trace_dict_includes_langfuse_fields(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
+    answer_response = type(
+        "AnswerResponse",
+        (),
+        {
+            "trace": type(
+                "AnswerTrace",
+                (),
+                {
+                    "model_id": "openai/gpt-4o-mini",
+                    "context_chunk_count": 3,
+                    "context_char_count": 2500,
+                    "duration_ms": 50.0,
+                    "langfuse_trace_id": "trace-answer-1",
+                    "langfuse_trace_url": "https://langfuse.local/trace/trace-answer-1",
+                },
+            )()
+        },
+    )()
+
+    payload = _answer_trace_to_dict(answer_response)
+
+    assert payload["langfuse_trace_id"] == "trace-answer-1"
+    assert payload["langfuse_trace_url"] == "https://langfuse.local/trace/trace-answer-1"

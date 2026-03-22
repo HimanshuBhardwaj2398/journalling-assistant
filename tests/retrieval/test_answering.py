@@ -5,6 +5,7 @@ import os
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
 os.environ["DEBUG"] = "false"
 
+from observability.langfuse import LangfuseTracer
 from retrieval.answering import GroundedAnswerService
 from retrieval.query import SearchResult
 
@@ -26,6 +27,45 @@ class FakeLLMClient:
             }
         )
         return "Craving conditions suffering according to the retrieved passages. [1]"
+
+
+class FakeLangfuseObservation:
+    """Context-managed fake Langfuse observation."""
+
+    def __init__(self):
+        self.updates = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def update(self, **kwargs):
+        self.updates.append(kwargs)
+
+
+class FakeLangfuseClient:
+    """Tiny fake Langfuse client used for tracing tests."""
+
+    def __init__(self):
+        self.flush_calls = 0
+        self.observations = []
+
+    def start_as_current_observation(self, **kwargs):
+        observation = FakeLangfuseObservation()
+        observation.start_kwargs = kwargs
+        self.observations.append(observation)
+        return observation
+
+    def get_current_trace_id(self):
+        return "trace-answer-123"
+
+    def get_trace_url(self, *_args):
+        return "https://langfuse.local/trace/trace-answer-123"
+
+    def flush(self):
+        self.flush_calls += 1
 
 
 def test_grounded_answer_service_builds_prompt_and_citations(monkeypatch):
@@ -76,3 +116,27 @@ def test_grounded_answer_service_requires_search_results(monkeypatch):
         assert "without search results" in str(exc)
     else:
         raise AssertionError("Expected ValueError when answering without search results")
+
+
+def test_grounded_answer_service_includes_langfuse_trace(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
+    client = FakeLLMClient()
+    tracer = LangfuseTracer(client=FakeLangfuseClient())
+    service = GroundedAnswerService(llm_client=client, tracer=tracer)
+
+    response = service.answer(
+        "What is mindfulness?",
+        [
+            SearchResult(
+                text="Mindfulness guards the mind.",
+                document_id=5,
+                source_title="Middle Discourses",
+                chunk_index=1,
+                chunk_uuid="uuid-1",
+                rank=1,
+            )
+        ],
+    )
+
+    assert response.trace.langfuse_trace_id == "trace-answer-123"
+    assert response.trace.langfuse_trace_url == "https://langfuse.local/trace/trace-answer-123"

@@ -193,6 +193,8 @@ def _search_trace_to_dict(response: SearchResponse) -> dict[str, Any]:
         "duration_ms": round(trace.duration_ms, 2),
         "total_results": response.total_results,
         "bm25_chunk_count": trace.bm25_chunk_count,
+        "langfuse_trace_id": trace.langfuse_trace_id,
+        "langfuse_trace_url": trace.langfuse_trace_url,
         "notes": trace.notes,
     }
 
@@ -204,6 +206,8 @@ def _answer_trace_to_dict(answer_response: AnswerResponse) -> dict[str, Any]:
         "context_chunk_count": answer_response.trace.context_chunk_count,
         "context_char_count": answer_response.trace.context_char_count,
         "duration_ms": round(answer_response.trace.duration_ms, 2),
+        "langfuse_trace_id": answer_response.trace.langfuse_trace_id,
+        "langfuse_trace_url": answer_response.trace.langfuse_trace_url,
     }
 
 
@@ -306,6 +310,8 @@ def _render_trace_tab(
 ) -> None:
     """Render search and answer trace details."""
     st.subheader("Search Trace")
+    if response.trace and response.trace.langfuse_trace_url:
+        st.markdown(f"[Open Search Trace In Langfuse]({response.trace.langfuse_trace_url})")
     st.json(_search_trace_to_dict(response), expanded=True)
 
     if filtered_doc_ids:
@@ -319,6 +325,8 @@ def _render_trace_tab(
 
     if answer_response is not None:
         st.subheader("Answer Trace")
+        if answer_response.trace.langfuse_trace_url:
+            st.markdown(f"[Open Answer Trace In Langfuse]({answer_response.trace.langfuse_trace_url})")
         st.json(_answer_trace_to_dict(answer_response), expanded=True)
         with st.expander("System Prompt", expanded=False):
             st.code(answer_response.trace.system_prompt, language="markdown")

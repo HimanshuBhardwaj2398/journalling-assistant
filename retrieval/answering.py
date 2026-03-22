@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
+from observability.langfuse import LangfuseTracer, get_langfuse_tracer
 from retrieval.llm_client import EvalLLMClient
 from retrieval.query import SearchResult
 
@@ -67,6 +68,8 @@ class AnswerTrace:
     context_chunk_count: int
     context_char_count: int
     duration_ms: float
+    langfuse_trace_id: Optional[str]
+    langfuse_trace_url: Optional[str]
     system_prompt: str
     user_prompt: str
 
@@ -94,11 +97,13 @@ class GroundedAnswerService:
     def __init__(
         self,
         llm_client: EvalLLMClient | None = None,
+        tracer: LangfuseTracer | None = None,
         max_chunks: int = 4,
         max_chunk_chars: int = 1200,
         max_excerpt_chars: int = 240,
     ) -> None:
         self._llm_client = llm_client or EvalLLMClient()
+        self._tracer = tracer or get_langfuse_tracer()
         self._max_chunks = max_chunks
         self._max_chunk_chars = max_chunk_chars
         self._max_excerpt_chars = max_excerpt_chars
@@ -114,16 +119,51 @@ class GroundedAnswerService:
         citations = [self._build_citation(result, idx) for idx, result in enumerate(selected_results, 1)]
         user_prompt = self._build_user_prompt(query=query, search_results=selected_results)
 
-        started = time.perf_counter()
-        answer = self._llm_client.complete(
-            messages=[
-                {"role": "system", "content": self.SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.1,
-            max_tokens=700,
-        )
-        duration_ms = (time.perf_counter() - started) * 1000
+        with self._tracer.observe(
+            name="retrieval.answer",
+            input={
+                "query": query,
+                "context_chunk_count": len(selected_results),
+                "model_id": self._llm_client.model_id,
+            },
+            metadata={
+                "sources": [
+                    {
+                        "document_id": result.document_id,
+                        "source_title": result.source_title,
+                        "chunk_index": result.chunk_index,
+                        "chunk_uuid": result.chunk_uuid,
+                    }
+                    for result in selected_results
+                ]
+            },
+        ) as observation:
+            started = time.perf_counter()
+            try:
+                answer = self._llm_client.complete(
+                    messages=[
+                        {"role": "system", "content": self.SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.1,
+                    max_tokens=700,
+                )
+            except Exception as exc:
+                observation.update(
+                    output={"error": str(exc)},
+                    metadata={"status": "failed", "model_id": self._llm_client.model_id},
+                    status_message=str(exc),
+                    model=self._llm_client.model_id,
+                )
+                raise
+
+            duration_ms = (time.perf_counter() - started) * 1000
+            observation.update(
+                output={"answer": answer},
+                metadata={"status": "completed", "context_chunk_count": len(selected_results)},
+                model=self._llm_client.model_id,
+                model_parameters={"temperature": 0.1, "max_tokens": 700},
+            )
 
         return AnswerResponse(
             query=query,
@@ -134,6 +174,8 @@ class GroundedAnswerService:
                 context_chunk_count=len(selected_results),
                 context_char_count=sum(len(result.text) for result in selected_results),
                 duration_ms=duration_ms,
+                langfuse_trace_id=observation.trace_id,
+                langfuse_trace_url=observation.trace_url,
                 system_prompt=self.SYSTEM_PROMPT,
                 user_prompt=user_prompt,
             ),

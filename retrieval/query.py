@@ -29,6 +29,7 @@ from langchain_voyageai import VoyageAIEmbeddings
 from sqlalchemy import text
 
 from db.database import session_scope
+from observability.langfuse import LangfuseTracer, get_langfuse_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,8 @@ class SearchTrace:
     duration_ms: float
     total_results: int
     bm25_chunk_count: int = 0
+    langfuse_trace_id: Optional[str] = None
+    langfuse_trace_url: Optional[str] = None
     notes: List[str] = field(default_factory=list)
 
 
@@ -113,10 +116,12 @@ class RetrievalEngine:
         collection_name: str = "documents",
         db_url: Optional[str] = None,
         embedding_model: str = "voyage-3.5",
+        tracer: Optional[LangfuseTracer] = None,
     ):
         self._collection_name = collection_name
         self._db_url = db_url or os.getenv("DB_URL") or os.getenv("DATABASE_URL")
         self._embedding_model = embedding_model
+        self._tracer = tracer or get_langfuse_tracer()
 
         # Lazily initialized
         self._vector_store: Optional[PGVector] = None
@@ -223,26 +228,70 @@ class RetrievalEngine:
             RetrievalStrategy.HYBRID: self._hybrid_search,
         }
 
-        search_fn = strategy_map[strategy]
-        results = search_fn(query, k=k, score_threshold=score_threshold, fetch_k=fetch_k)
+        with self._tracer.observe(
+            name="retrieval.search",
+            input={
+                "query": query,
+                "strategy": strategy.value,
+                "k": k,
+                "fetch_k": fetch_k,
+                "score_threshold": score_threshold,
+            },
+            metadata={
+                "collection_name": self._collection_name,
+                "embedding_model": self._embedding_model,
+            },
+        ) as observation:
+            try:
+                search_fn = strategy_map[strategy]
+                results = search_fn(query, k=k, score_threshold=score_threshold, fetch_k=fetch_k)
 
-        # Enrich results with document titles
-        self._enrich_with_document_info(results)
+                # Enrich results with document titles
+                self._enrich_with_document_info(results)
+            except Exception as exc:
+                observation.update(
+                    output={"error": str(exc)},
+                    metadata={"status": "failed"},
+                    status_message=str(exc),
+                )
+                raise
 
-        notes = self._build_trace_notes(strategy, score_threshold=score_threshold)
-        trace = SearchTrace(
-            collection_name=self._collection_name,
-            embedding_model=self._embedding_model,
-            requested_k=k,
-            fetch_k=fetch_k,
-            score_threshold=score_threshold,
-            started_at=started_at,
-            duration_ms=(time.perf_counter() - started) * 1000,
-            total_results=len(results),
-            bm25_chunk_count=len(self._all_chunks or []),
-            notes=notes,
-        )
-        return SearchResponse(query=query, strategy=strategy, results=results, trace=trace)
+            notes = self._build_trace_notes(strategy, score_threshold=score_threshold)
+            observation.update(
+                output={
+                    "total_results": len(results),
+                    "top_results": [
+                        {
+                            "rank": result.rank,
+                            "source_title": result.source_title,
+                            "document_id": result.document_id,
+                            "chunk_index": result.chunk_index,
+                            "score": result.score,
+                        }
+                        for result in results[:5]
+                    ],
+                },
+                metadata={
+                    "status": "completed",
+                    "bm25_chunk_count": len(self._all_chunks or []),
+                },
+            )
+
+            trace = SearchTrace(
+                collection_name=self._collection_name,
+                embedding_model=self._embedding_model,
+                requested_k=k,
+                fetch_k=fetch_k,
+                score_threshold=score_threshold,
+                started_at=started_at,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                total_results=len(results),
+                bm25_chunk_count=len(self._all_chunks or []),
+                langfuse_trace_id=observation.trace_id,
+                langfuse_trace_url=observation.trace_url,
+                notes=notes,
+            )
+            return SearchResponse(query=query, strategy=strategy, results=results, trace=trace)
 
     def _similarity_search(self, query: str, k: int = 5, **kwargs) -> List[SearchResult]:
         """Top-K similarity search using pgvector."""
