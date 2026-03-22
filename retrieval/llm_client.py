@@ -1,5 +1,5 @@
 """
-Multi-provider LLM client for eval dataset generation.
+Multi-provider LLM client for retrieval and eval pipelines.
 
 Configure via environment variables:
   LLM_PROVIDER=groq       → groq/llama-3.3-70b-versatile (default)
@@ -10,9 +10,9 @@ Configure via environment variables:
   OLLAMA_BASE_URL=...     → default: http://localhost:11434
 
 Usage:
-    from retrieval.llm_client import EvalLLMClient
+    from retrieval.llm_client import LLMClient
 
-    client = EvalLLMClient()
+    client = LLMClient()
     text = client.complete(messages=[{"role": "user", "content": "..."}])
 """
 
@@ -29,8 +29,8 @@ _PROVIDER_DEFAULTS: dict[str, str] = {
 }
 
 
-class EvalLLMClient:
-    """Thin wrapper around litellm for eval notebook LLM calls."""
+class LLMClient:
+    """Multi-provider LLM client for retrieval and eval pipelines."""
 
     def __init__(self) -> None:
         provider = os.getenv("LLM_PROVIDER", "groq").lower().strip()
@@ -62,4 +62,8 @@ class EvalLLMClient:
         return response.choices[0].message.content.strip()
 
     def __repr__(self) -> str:
-        return f"EvalLLMClient(model={self.model_id!r})"
+        return f"LLMClient(model={self.model_id!r})"
+
+
+# Backwards-compatible alias — eval notebooks use this name
+EvalLLMClient = LLMClient

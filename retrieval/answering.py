@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
 from observability.langfuse import LangfuseTracer, get_langfuse_tracer
-from retrieval.llm_client import EvalLLMClient
+from retrieval.llm_client import LLMClient
 from retrieval.query import SearchResult
 from retrieval.utils import extract_header_paths
 
@@ -61,13 +61,13 @@ class GroundedAnswerService:
 
     def __init__(
         self,
-        llm_client: EvalLLMClient | None = None,
+        llm_client: LLMClient | None = None,
         tracer: LangfuseTracer | None = None,
         max_chunks: int = 4,
         max_chunk_chars: int = 1200,
         max_excerpt_chars: int = 240,
     ) -> None:
-        self._llm_client = llm_client or EvalLLMClient()
+        self._llm_client = llm_client or LLMClient()
         self._tracer = tracer or get_langfuse_tracer()
         self._max_chunks = max_chunks
         self._max_chunk_chars = max_chunk_chars
