@@ -44,3 +44,49 @@ jobs:
 
       - name: Run Ruff formatting check
         run: poetry run ruff format --check .
+
+      # TODO: flip continue-on-error to false once existing mypy findings are fixed.
+      # Non-blocking for now so type errors are visible in CI without blocking merges.
+      - name: Run mypy
+        run: poetry run mypy .
+        continue-on-error: true
+
+  tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      # Dummy values so pydantic-settings validation passes at import time.
+      # Tests mock external services; no real connections are made.
+      DB_URL: postgresql://test:test@localhost:5432/test
+      VOYAGE_API_KEY: test-key
+      LLAMAPARSE_API: test-key
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Cache Poetry and pip downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.cache/pip
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction --no-root
+
+      - name: Run tests with coverage
+        run: poetry run pytest --cov --cov-report=term-missing

@@ -578,6 +578,10 @@ if __name__ == "__main__":
     """
     import asyncio
 
+    from config.logging_config import setup_logging
+
+    setup_logging()
+
     # Create orchestrator
     orchestrator = IngestionOrchestrator(
         vector_store_config=VectorStoreConfig(
@@ -591,13 +595,13 @@ if __name__ == "__main__":
 
     try:
         result = asyncio.run(orchestrator.process(source))
-        print("\n=== Pipeline Result ===")
-        print(f"Source: {result['source']}")
-        print(f"Title: {result['title']}")
-        print(f"Chunks: {result['chunk_count']}")
-        print(f"Success: {result['success']}")
-        print(f"Stage Results: {result['stage_results']}")
+        logger.info("=== Pipeline Result ===")
+        logger.info("Source: %s", result["source"])
+        logger.info("Title: %s", result["title"])
+        logger.info("Chunks: %s", result["chunk_count"])
+        logger.info("Success: %s", result["success"])
+        logger.info("Stage Results: %s", result["stage_results"])
         if result["errors"]:
-            print(f"Errors: {result['errors']}")
-    except Exception as e:
-        print(f"Pipeline failed: {e}")
+            logger.error("Errors: %s", result["errors"])
+    except Exception:
+        logger.exception("Pipeline failed")

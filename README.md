@@ -90,13 +90,24 @@ orchestrator.process("https://example.com/article")
 
 ## Code Quality
 
+One-time setup after `poetry install` — installs git hooks that lint/format on every commit:
+
 ```bash
-poetry run ruff check .          # Lint
-poetry run ruff format --check . # Format check
-poetry run pytest                # Tests
+poetry run pre-commit install
 ```
 
-Lint and format checks run automatically via GitHub Actions on pushes and PRs to `main`.
+Manual checks:
+
+```bash
+poetry run ruff check .           # Lint
+poetry run ruff format --check .  # Format check
+poetry run mypy .                 # Type check
+poetry run pytest --cov           # Tests with coverage
+```
+
+CI (GitHub Actions, on pushes and PRs to `main`) runs lint, format check, mypy (non-blocking until existing findings are fixed), and the test suite.
+
+Logging is configured centrally in `config/logging_config.py`; entry points call `setup_logging()` once, and the level is controlled by `LOG_LEVEL` in `.env`.
 
 ## Roadmap
 
