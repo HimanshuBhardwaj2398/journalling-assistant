@@ -62,3 +62,6 @@ CLAUDE.md
 # Eval dataset outputs (generated artifacts, not tracked)
 data/eval_dataset.jsonl
 data/*.png
+
+# SuttaCentral catalog (generated artifact, regenerable via scripts/build_catalog.py)
+data/suttacentral_catalog.jsonl

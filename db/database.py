@@ -136,6 +136,17 @@ def get_database() -> Database:
     return _default_database
 
 
+def set_default_database(database: Database) -> None:
+    """Override the process-wide default Database.
+
+    Intended for a composition root (e.g. an ingestion CLI targeting a specific
+    database) to redirect the backward-compatible module-level ``session_scope``
+    without threading a Database through every call site.
+    """
+    global _default_database
+    _default_database = database
+
+
 @contextmanager
 def session_scope() -> Iterator[Session]:
     """Transactional scope backed by the default database (backward-compatible).
