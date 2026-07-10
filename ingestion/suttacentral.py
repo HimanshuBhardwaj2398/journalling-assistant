@@ -24,6 +24,7 @@ from core.interfaces import ParseResult
 _SC_URL = re.compile(r"^https?://(www\.)?suttacentral\.net/", re.IGNORECASE)
 _SC_SHORTHAND = re.compile(r"^sc:", re.IGNORECASE)
 _API_BASE = "https://suttacentral.net/api"
+_BILARA_REPO = "https://api.github.com/repos/suttacentral/bilara-data"
 
 
 def bilara_to_html(bilara: dict, *, use: str = "translation_text") -> str:
@@ -202,3 +203,47 @@ class SuttaCentralParser:
             if match:
                 return match.group(1).strip()
         return None
+
+
+class SuttaCentralCatalog:
+    """Enumerates SuttaCentral suttas from the bilara-data repository tree.
+
+    The public ``/api/menu`` tree stops at vaggas, so sutta-level enumeration
+    reads the bilara-data GitHub tree (branch ``published``), which lists every
+    translated sutta and yields its uid, nikaya, author and language.
+    """
+
+    def __init__(
+        self,
+        fetch_json: Optional[Callable[[str], dict]] = None,
+        author: str = "sujato",
+        lang: str = "en",
+    ):
+        self._fetch_json = fetch_json or _default_fetch_json
+        self._author = author
+        self._lang = lang
+
+    def crawl(self, nikayas: tuple[str, ...] = ("dn", "mn", "sn", "an", "kn")) -> list[dict]:
+        """Return catalog entries (one dict per sutta) for the given nikayas."""
+        sutta_dirs = self._fetch_json(
+            f"{_BILARA_REPO}/contents/translation/{self._lang}/{self._author}/sutta?ref=published"
+        )
+        sha_by_nikaya = {
+            item["name"]: item["sha"] for item in sutta_dirs if item.get("type") == "dir"
+        }
+
+        entries: list[dict] = []
+        for nikaya in nikayas:
+            sha = sha_by_nikaya.get(nikaya)
+            if not sha:
+                continue
+            tree = self._fetch_json(f"{_BILARA_REPO}/git/trees/{sha}?recursive=1")
+            full_paths = [
+                f"translation/{self._lang}/{self._author}/sutta/{nikaya}/{blob['path']}"
+                for blob in tree.get("tree", [])
+                if blob.get("type") == "blob"
+            ]
+            entries.extend(
+                catalog_entries_from_tree(full_paths, lang=self._lang, author=self._author)
+            )
+        return entries

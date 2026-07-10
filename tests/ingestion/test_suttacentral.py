@@ -177,3 +177,31 @@ def test_catalog_entries_from_tree_handles_plain_uid_filenames():
     )
 
     assert entries[0]["uid"] == "mn1"
+
+
+def test_catalog_crawl_collects_entries_across_nikayas():
+    from ingestion.suttacentral import SuttaCentralCatalog
+
+    contents = [
+        {"name": "mn", "type": "dir", "sha": "shaMN"},
+        {"name": "dn", "type": "dir", "sha": "shaDN"},
+    ]
+    tree_mn = {
+        "tree": [
+            {"path": "mn1_translation-en-sujato.json", "type": "blob"},
+            {"path": "mn2_translation-en-sujato.json", "type": "blob"},
+        ]
+    }
+    tree_dn = {"tree": [{"path": "dn1_translation-en-sujato.json", "type": "blob"}]}
+    fetch = _FakeFetcher(
+        {
+            "/contents/translation/en/sujato/sutta": contents,
+            "/git/trees/shaMN": tree_mn,
+            "/git/trees/shaDN": tree_dn,
+        }
+    )
+
+    entries = SuttaCentralCatalog(fetch_json=fetch).crawl(nikayas=("mn", "dn"))
+
+    assert {e["uid"] for e in entries} == {"mn1", "mn2", "dn1"}
+    assert {e["nikaya"] for e in entries} == {"mn", "dn"}
