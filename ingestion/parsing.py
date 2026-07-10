@@ -13,7 +13,6 @@ from typing import Optional
 
 import requests
 from dotenv import load_dotenv
-from llama_cloud_services import LlamaParse
 from markdownify import markdownify as md
 
 from core.exceptions import ConfigurationError, ParsingError
@@ -136,6 +135,10 @@ class PDFParser:
             raise ParsingError(f"PDF file not found: {source}")
 
         try:
+            # Lazy import: LlamaParse pulls a heavy (and currently fragile) dependency
+            # chain, so it must not be imported unless a PDF is actually being parsed.
+            from llama_cloud_services import LlamaParse
+
             logger.info(f"Parsing PDF: {source}")
 
             parser = LlamaParse(
