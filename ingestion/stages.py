@@ -77,18 +77,46 @@ class ParsingStage(PipelineStage):
 
             logger.info(f"Successfully parsed: {context.source} (title: {result.title})")
 
-            # Persist markdown to database
+            metadata = result.metadata or {}
+            tags = metadata.get("tags")
+            structured = {
+                key: metadata[key]
+                for key in (
+                    "source",
+                    "uid",
+                    "author_uid",
+                    "lang",
+                    "nikaya",
+                    "nikaya_name",
+                    "nikaya_english",
+                    "reading_url",
+                )
+                if key in metadata
+            }
+
+            # Persist markdown, the parsed title, and source tags/metadata
             if context.document_id:
                 with session_scope() as session:
-                    DocumentCRUD(session).update_markdown(
-                        document_id=context.document_id,
-                        markdown=result.content,
-                    )
-                logger.info(f"Saved markdown to database for document {context.document_id}")
+                    doc = DocumentCRUD(session).get_document_by_id(context.document_id)
+                    if doc:
+                        doc.markdown = result.content
+                        if result.title:
+                            doc.title = result.title
+                        if tags:
+                            existing = list(doc.tags or [])
+                            doc.tags = existing + [t for t in tags if t not in existing]
+                        if structured:
+                            doc.doc_metadata = {**(doc.doc_metadata or {}), **structured}
+                        session.commit()
+                logger.info(
+                    f"Saved markdown/title/tags to database for document {context.document_id}"
+                )
 
-            # Update context with parsed results
+            # Update context with parsed results (source_metadata tags the chunks later)
             return context.with_update(
-                parsed_content=result.content, title=result.title or "Untitled"
+                parsed_content=result.content,
+                title=result.title or "Untitled",
+                source_metadata=metadata,
             ).mark_stage_completed(self.name)
 
         except ParsingError as e:
@@ -228,6 +256,10 @@ class EmbeddingStage(PipelineStage):
                     chunk.metadata.setdefault("original_doc_id", context.document_id)
                 if context.title:
                     chunk.metadata.setdefault("source_title", context.title)
+                # Tag each chunk with source/nikaya metadata for retrieval filtering
+                for key in ("source", "uid", "author_uid", "lang", "nikaya", "nikaya_name"):
+                    if key in context.source_metadata:
+                        chunk.metadata.setdefault(key, context.source_metadata[key])
                 chunk_uuid = str(uuid_lib.uuid4())
                 chunk.metadata["uuid"] = chunk_uuid
                 # PGVector uses Document.id as the persisted vector ID.

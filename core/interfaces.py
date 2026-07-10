@@ -109,6 +109,7 @@ class PipelineContext:
     # Parsed content
     parsed_content: Optional[str] = None
     title: Optional[str] = None
+    source_metadata: Dict[str, Any] = field(default_factory=dict)
 
     # Chunking results
     chunks: List[LangchainDocument] = field(default_factory=list)
