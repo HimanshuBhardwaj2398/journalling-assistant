@@ -25,7 +25,7 @@ class VectorStoreConfig:
     """Configuration for vector store operations."""
 
     model_name: str = "voyage-3.5"
-    collection_name: str = "documents"
+    collection_name: str = "buddhist_texts"
     db_url: Optional[str] = None
     use_jsonb: bool = True
     batch_size: int = 100

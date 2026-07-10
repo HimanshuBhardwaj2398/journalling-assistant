@@ -37,6 +37,9 @@ htmlcov/
 # Experiments
 experiments/
 
+# Plan drafts
+docs/plans/
+
 # Docker volumes (local)
 postgres_data/
 

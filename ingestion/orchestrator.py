@@ -585,7 +585,7 @@ if __name__ == "__main__":
     # Create orchestrator
     orchestrator = IngestionOrchestrator(
         vector_store_config=VectorStoreConfig(
-            collection_name="documents",
+            collection_name="buddhist_texts",
             db_url=os.getenv("DATABASE_URL"),
         )
     )

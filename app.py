@@ -20,7 +20,7 @@ load_dotenv()
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from views import browse, ingest, queue, stats, validation  # noqa: E402
+from views import browse, ingest, queue, rag_playground, stats, validation  # noqa: E402
 
 # Page configuration
 st.set_page_config(
@@ -40,6 +40,9 @@ if "processing_status" not in st.session_state:
 if "last_processed_id" not in st.session_state:
     st.session_state.last_processed_id = None
 
+if "nav_page" not in st.session_state:
+    st.session_state.nav_page = "Ingest New Document"
+
 # Sidebar navigation
 with st.sidebar:
     st.title("Meditation Database")
@@ -51,10 +54,12 @@ with st.sidebar:
             "Ingest New Document",
             "Processing Queue",
             "Browse Database",
+            "RAG Playground",
             "Statistics",
             "Validation",
         ],
         label_visibility="collapsed",
+        key="nav_page",
     )
 
     st.markdown("---")
@@ -67,6 +72,8 @@ elif page == "Processing Queue":
     queue.render()
 elif page == "Browse Database":
     browse.render()
+elif page == "RAG Playground":
+    rag_playground.render()
 elif page == "Statistics":
     stats.render()
 elif page == "Validation":

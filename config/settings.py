@@ -57,9 +57,17 @@ class DatabaseSettings(BaseSettings):
         return v
 
     @property
-    def is_supabase(self) -> bool:
-        """Check if using Supabase database."""
-        return "supabase.com" in self.url or "supabase.co" in self.url
+    def is_remote(self) -> bool:
+        """True for managed/remote Postgres (Neon, Supabase, any non-local host).
+
+        Remote databases require TLS and benefit from connection resilience
+        (``pool_pre_ping`` + recycle), because providers like Neon suspend idle
+        connections (scale-to-zero) and drop them from under the pool.
+        """
+        from urllib.parse import urlparse
+
+        host = (urlparse(self.url).hostname or "").lower()
+        return host not in ("", "localhost", "127.0.0.1", "::1")
 
 
 class EmbeddingSettings(BaseSettings):
@@ -157,6 +165,55 @@ class ChunkingSettings(BaseSettings):
         return v
 
 
+class LangfuseSettings(BaseSettings):
+    """Langfuse tracing configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="LANGFUSE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    public_key: Optional[str] = Field(default=None, description="Langfuse public API key")
+    secret_key: Optional[str] = Field(default=None, description="Langfuse secret API key")
+    base_url: str = Field(
+        default="https://cloud.langfuse.com",
+        description="Langfuse API base URL",
+    )
+    tracing_enabled: bool = Field(default=True, description="Enable Langfuse tracing")
+    tracing_environment: str = Field(
+        default="development",
+        description="Logical environment name for Langfuse traces",
+    )
+    release: Optional[str] = Field(default=None, description="App release or version label")
+
+    @property
+    def is_configured(self) -> bool:
+        """Return True when enough configuration is present to send traces."""
+        return bool(self.tracing_enabled and self.public_key and self.secret_key)
+
+
+class VectorSettings(BaseSettings):
+    """Vector store configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="VECTOR_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    collection_name: str = Field(
+        default="buddhist_texts",
+        description=(
+            "Default vector store collection. Collections partition sources by type "
+            "(e.g. buddhist_texts, talks, meditation_research, scientific_discussions); "
+            "callers pass their own collection_name to route a resource elsewhere."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     """
     Root application settings.
@@ -183,6 +240,8 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     parsing: ParsingSettings = Field(default_factory=ParsingSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
+    langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    vector: VectorSettings = Field(default_factory=VectorSettings)
 
     @field_validator("hf_token", mode="before")
     @classmethod
@@ -192,6 +251,18 @@ class Settings(BaseSettings):
 
         if not v:
             v = os.getenv("HF_TOKEN")
+        return v
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def validate_debug(cls, v):
+        """Accept common environment-style debug aliases."""
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"debug", "dev", "development"}:
+                return True
         return v
 
     def model_post_init(self, __context) -> None:
