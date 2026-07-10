@@ -123,6 +123,42 @@ def catalog_entries_from_tree(
     return entries
 
 
+_NIKAYA_NAMES = {
+    "dn": ("digha_nikaya", "long_discourses"),
+    "mn": ("majjhima_nikaya", "middle_discourses"),
+    "sn": ("samyutta_nikaya", "linked_discourses"),
+    "an": ("anguttara_nikaya", "numbered_discourses"),
+    "kn": ("khuddaka_nikaya", "minor_discourses"),
+}
+
+
+def nikaya_tags(uid: str) -> dict:
+    """Derive nikaya tags from a sutta uid (e.g. ``mn1`` -> Majjhima Nikaya).
+
+    Returns ``nikaya`` (code), optional ``nikaya_name`` (Pali) and
+    ``nikaya_english``, plus a flat ``tags`` list suitable for ``documents.tags``.
+    Unknown collections still get the base tags + the extracted code.
+    """
+    match = re.match(r"^([a-z]+)", uid.lower())
+    code = match.group(1) if match else ""
+    pali, english = _NIKAYA_NAMES.get(code, (None, None))
+
+    tags = ["buddhism", "pali_canon", "sutta"]
+    if code:
+        tags.append(code)
+    if pali:
+        tags.append(pali)
+    if english:
+        tags.append(english)
+
+    result: dict = {"nikaya": code, "tags": tags}
+    if pali:
+        result["nikaya_name"] = pali
+    if english:
+        result["nikaya_english"] = english
+    return result
+
+
 def _default_fetch_json(url: str) -> dict:
     """Real HTTP fetcher for the SuttaCentral API (exercised in live runs, not unit tests)."""
     import requests
@@ -192,6 +228,7 @@ class SuttaCentralParser:
                 "lang": ref.lang,
                 "segmented": segmented,
                 "reading_url": f"https://suttacentral.net/{ref.uid}/{ref.lang}/{ref.author}",
+                **nikaya_tags(ref.uid),
             },
         )
 

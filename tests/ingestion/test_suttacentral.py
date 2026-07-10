@@ -205,3 +205,56 @@ def test_catalog_crawl_collects_entries_across_nikayas():
 
     assert {e["uid"] for e in entries} == {"mn1", "mn2", "dn1"}
     assert {e["nikaya"] for e in entries} == {"mn", "dn"}
+
+
+def test_nikaya_tags_code_pali_and_english():
+    from ingestion.suttacentral import nikaya_tags
+
+    tags = nikaya_tags("mn1")
+
+    assert tags["nikaya"] == "mn"
+    assert tags["nikaya_name"] == "majjhima_nikaya"
+    assert tags["nikaya_english"] == "middle_discourses"
+    assert tags["tags"] == [
+        "buddhism",
+        "pali_canon",
+        "sutta",
+        "mn",
+        "majjhima_nikaya",
+        "middle_discourses",
+    ]
+
+
+def test_nikaya_tags_extracts_code_from_complex_uid():
+    from ingestion.suttacentral import nikaya_tags
+
+    assert nikaya_tags("sn12.2")["nikaya"] == "sn"
+    assert nikaya_tags("an1.1")["nikaya_name"] == "anguttara_nikaya"
+
+
+def test_nikaya_tags_unknown_nikaya_is_safe():
+    from ingestion.suttacentral import nikaya_tags
+
+    tags = nikaya_tags("xyz9")
+
+    assert tags["nikaya"] == "xyz"
+    assert "nikaya_name" not in tags
+    assert tags["tags"] == ["buddhism", "pali_canon", "sutta", "xyz"]
+
+
+def test_parse_includes_nikaya_tags_in_metadata():
+    suttas = {"segmented": True}
+    bilara = {
+        "keys_order": ["mn1:0.2"],
+        "html_text": {"mn1:0.2": "<h1>{}</h1>"},
+        "translation_text": {"mn1:0.2": "The Root of All Things"},
+    }
+    fetch = _FakeFetcher(
+        {"/api/suttas/mn1/sujato": suttas, "/api/bilarasuttas/mn1/sujato": bilara}
+    )
+
+    result = SuttaCentralParser(fetch_json=fetch).parse("sc:mn1/sujato")
+
+    assert result.metadata["nikaya"] == "mn"
+    assert result.metadata["nikaya_name"] == "majjhima_nikaya"
+    assert "majjhima_nikaya" in result.metadata["tags"]
