@@ -1,144 +1,171 @@
 """
 Database connection and session management.
-Supports both local PostgreSQL and Supabase with optimized pooling.
+
+The engine is owned by a :class:`Database` object constructed on demand rather
+than at import time, so importing this module no longer requires database
+configuration (the seam that makes persistence injectable and testable). A
+lazily-built default ``Database`` (from application settings) backs the
+backward-compatible module-level ``session_scope`` / ``init_db`` / ``get_db``
+helpers and the ``engine`` / ``SessionLocal`` attributes.
 """
 
 import logging
 from contextlib import contextmanager
+from typing import Iterator, Optional
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
-from config.settings import get_settings
+from config.settings import DatabaseSettings, get_settings
 
 from .schema import Base
 
 logger = logging.getLogger(__name__)
 
-# Get settings
-settings = get_settings()
 
-# Configure engine based on environment
-if settings.database.is_remote:
-    # Managed/remote Postgres (Neon, etc.): connection resilience for providers
-    # that suspend idle connections (Neon scale-to-zero) and drop them mid-pool.
-    # SSL is taken from the URL (append ?sslmode=require) rather than connect_args,
-    # so sslmode is never specified twice.
-    engine = create_engine(
-        settings.database.url,
-        pool_size=settings.database.pool_size,
-        max_overflow=settings.database.max_overflow,
-        pool_timeout=settings.database.pool_timeout,
-        pool_recycle=settings.database.pool_recycle,  # recycle stale connections proactively
-        pool_pre_ping=True,  # validate + transparently reconnect before use
-        echo=settings.database.echo,
-        connect_args={
-            "connect_timeout": 10,  # Fail fast if connection takes >10s
-            "keepalives": 1,  # Enable TCP keepalives
-            "keepalives_idle": 30,  # Start keepalives after 30s idle
-            "keepalives_interval": 10,  # Send keepalive every 10s
-            "keepalives_count": 5,  # Give up after 5 failed keepalives
-        },
-    )
-    logger.info("Initialized remote (managed) database connection with resilient pooling")
-else:
-    # Local development configuration
-    engine = create_engine(
-        settings.database.url,
-        pool_size=5,
-        max_overflow=10,
-        echo=settings.database.echo,
-    )
-    logger.info("Initialized local database connection")
+class Database:
+    """Owns a SQLAlchemy engine + session factory for a single database.
 
-# Session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def init_db():
+    Built lazily on first use, so it can be injected freely — including with an
+    in-memory SQLite URL in tests — without touching globals or environment
+    variables.
     """
-    Initialize database: create pgvector extension and all tables.
 
-    This should be run once when setting up a new database.
-    For Supabase, ensure pgvector extension is enabled.
-    """
-    logger.info("Initializing database...")
+    def __init__(self, settings: DatabaseSettings):
+        self._settings = settings
+        self._engine: Optional[Engine] = None
+        self._session_factory: Optional[sessionmaker] = None
 
-    try:
-        # Create pgvector extension
-        with engine.connect() as connection:
-            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            connection.commit()
-            logger.info("✓ pgvector extension enabled")
-
-        # Create all tables
-        Base.metadata.create_all(bind=engine)
-        logger.info("✓ Database tables created")
-
-        # Verify tables
-        with engine.connect() as connection:
-            result = connection.execute(
-                text(
-                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
-                )
+    @property
+    def engine(self) -> Engine:
+        if self._engine is None:
+            self._engine = self._build_engine(self._settings)
+            self._session_factory = sessionmaker(
+                autocommit=False, autoflush=False, bind=self._engine
             )
-            tables = [row[0] for row in result]
-            logger.info(f"✓ Tables in database: {', '.join(tables)}")
+            logger.info("Initialized database engine")
+        return self._engine
 
-        logger.info("Database initialization complete")
+    @property
+    def session_factory(self) -> sessionmaker:
+        if self._session_factory is None:
+            _ = self.engine  # building the engine also builds the session factory
+        return self._session_factory
 
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}", exc_info=True)
-        raise
+    @staticmethod
+    def _build_engine(settings: DatabaseSettings) -> Engine:
+        url = settings.url
+        if url.startswith("sqlite"):
+            # SQLite (tests/local): no server-side pooling knobs.
+            return create_engine(url, echo=settings.echo)
+        if settings.is_remote:
+            # Managed/remote Postgres (Neon, etc.): resilient pooling; SSL from the URL.
+            return create_engine(
+                url,
+                pool_size=settings.pool_size,
+                max_overflow=settings.max_overflow,
+                pool_timeout=settings.pool_timeout,
+                pool_recycle=settings.pool_recycle,
+                pool_pre_ping=True,
+                echo=settings.echo,
+                connect_args={
+                    "connect_timeout": 10,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                },
+            )
+        return create_engine(url, pool_size=5, max_overflow=10, echo=settings.echo)
+
+    @contextmanager
+    def session_scope(self) -> Iterator[Session]:
+        """Provide a transactional scope around a series of operations."""
+        session = self.session_factory()
+        try:
+            yield session
+            session.commit()
+        except Exception as exc:
+            logger.error(f"Session error: {exc}")
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def init_db(self) -> None:
+        """Create the pgvector extension and all tables. Run once per database."""
+        logger.info("Initializing database...")
+        try:
+            with self.engine.connect() as connection:
+                connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                connection.commit()
+                logger.info("pgvector extension enabled")
+
+            Base.metadata.create_all(bind=self.engine)
+            logger.info("Database tables created")
+
+            with self.engine.connect() as connection:
+                result = connection.execute(
+                    text(
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                        "ORDER BY tablename"
+                    )
+                )
+                tables = [row[0] for row in result]
+                logger.info(f"Tables in database: {', '.join(tables)}")
+
+            logger.info("Database initialization complete")
+        except Exception as exc:
+            logger.error(f"Database initialization failed: {exc}", exc_info=True)
+            raise
 
 
-# def get_engine():
-#     """Returns the SQLAlchemy engine for database operations.
-#     This is useful for raw SQL queries or when you need to execute database commands directly.
-#     """
+# ---------------------------------------------------------------------------
+# Backward-compatible module-level API (delegates to a lazily-built default DB)
+# ---------------------------------------------------------------------------
 
-#     DATABASE_URL = os.getenv("DATABASE_URL")
+_default_database: Optional[Database] = None
 
-#     if not DATABASE_URL:
-#         raise ValueError("DATABASE_URL environment variable not set in .env file")
 
-#     # The engine is the entry point to the database.
-#     # `echo=False` is recommended for production.
-#     engine = create_engine(DATABASE_URL, echo=False)
-
-#     # A sessionmaker is a factory for creating Session objects.
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_database() -> Database:
+    """Return the process-wide default Database, built from application settings."""
+    global _default_database
+    if _default_database is None:
+        _default_database = Database(get_settings().database)
+    return _default_database
 
 
 @contextmanager
-def session_scope():
-    """
-    Provide a transactional scope around database operations.
+def session_scope() -> Iterator[Session]:
+    """Transactional scope backed by the default database (backward-compatible).
 
     Usage:
         with session_scope() as session:
-            doc = DocumentCRUD(session).create_document(...)
-            session.commit()
+            DocumentCRUD(session).create_document(...)
     """
-    session = SessionLocal()
+    with get_database().session_scope() as session:
+        yield session
+
+
+def get_db() -> Iterator[Session]:
+    """Yield a session from the default database (e.g. for request handlers)."""
+    session = get_database().session_factory()
     try:
         yield session
-        session.commit()
-    except Exception as e:
-        logger.error(f"Session error: {e}")
-        session.rollback()
-        raise
     finally:
         session.close()
 
 
-def get_db():
-    """
-    A generator function to provide a database session for each request.
-    This ensures the session is always closed after use.
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def init_db() -> None:
+    """Initialize the default database (pgvector extension + tables)."""
+    get_database().init_db()
+
+
+def __getattr__(name: str):
+    """Lazily expose ``engine`` / ``SessionLocal`` without building them at import."""
+    if name == "engine":
+        return get_database().engine
+    if name == "SessionLocal":
+        return get_database().session_factory
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
