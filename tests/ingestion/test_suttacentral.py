@@ -79,3 +79,59 @@ def test_can_parse_rejects_other_sources():
 
     assert parser.can_parse("https://example.com") is False
     assert parser.can_parse("/path/to/doc.pdf") is False
+
+
+class _FakeFetcher:
+    """Returns a canned JSON payload for the first URL substring that matches."""
+
+    def __init__(self, by_substring: dict):
+        self._by_substring = by_substring
+        self.calls: list[str] = []
+
+    def __call__(self, url: str) -> dict:
+        self.calls.append(url)
+        for substring, payload in self._by_substring.items():
+            if substring in url:
+                return payload
+        raise AssertionError(f"unexpected URL fetched: {url}")
+
+
+def test_parse_segmented_reconstructs_markdown_and_metadata():
+    suttas = {"segmented": True, "suttaplex": {"original_title": "Mūlapariyāya"}}
+    bilara = {
+        "keys_order": ["mn1:0.2", "mn1:1.1"],
+        "html_text": {"mn1:0.2": "<h1>{}</h1>", "mn1:1.1": "<p>{}</p>"},
+        "translation_text": {
+            "mn1:0.2": "The Root of All Things",
+            "mn1:1.1": "So I have heard.",
+        },
+    }
+    fetch = _FakeFetcher(
+        {"/api/suttas/mn1/sujato": suttas, "/api/bilarasuttas/mn1/sujato": bilara}
+    )
+
+    result = SuttaCentralParser(fetch_json=fetch).parse("sc:mn1/sujato")
+
+    assert "# The Root of All Things" in result.content
+    assert "So I have heard." in result.content
+    assert result.metadata["uid"] == "mn1"
+    assert result.metadata["author_uid"] == "sujato"
+    assert result.metadata["segmented"] is True
+    assert result.metadata["source"] == "suttacentral"
+
+
+def test_parse_legacy_uses_inline_translation_html():
+    suttas = {
+        "segmented": False,
+        "translation": {
+            "text": "<article><h1>The Root of All Things</h1><p>So I have heard.</p></article>"
+        },
+    }
+    fetch = _FakeFetcher({"/api/suttas/mn1/bodhi": suttas})
+
+    result = SuttaCentralParser(fetch_json=fetch).parse("sc:mn1/bodhi")
+
+    assert "# The Root of All Things" in result.content
+    assert "So I have heard." in result.content
+    assert result.metadata["segmented"] is False
+    assert result.metadata["author_uid"] == "bodhi"

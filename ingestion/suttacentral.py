@@ -5,7 +5,8 @@ generic ``URLParser`` (a plain ``requests.get`` + ``markdownify``) only sees the
 empty SPA shell. This module fetches text via the API and, for modern *segmented*
 (bilara) translations such as Bhikkhu Sujato's, reconstructs the site's own HTML
 from the parallel ``html_text`` + ``translation_text`` layers so it markdownifies
-into the clean header-delimited form the chunker expects.
+into the clean header-delimited form the chunker expects. Legacy translations
+(e.g. Bhikkhu Bodhi) already carry inline HTML and are converted directly.
 """
 
 from __future__ import annotations
@@ -15,10 +16,14 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
+from markdownify import markdownify as md
+
 from core.exceptions import ParsingError
+from core.interfaces import ParseResult
 
 _SC_URL = re.compile(r"^https?://(www\.)?suttacentral\.net/", re.IGNORECASE)
 _SC_SHORTHAND = re.compile(r"^sc:", re.IGNORECASE)
+_API_BASE = "https://suttacentral.net/api"
 
 
 def bilara_to_html(bilara: dict, *, use: str = "translation_text") -> str:
@@ -77,13 +82,20 @@ def parse_sutta_ref(source: str) -> SuttaRef:
     if _SC_URL.match(source):
         parts = [p for p in urlparse(source).path.split("/") if p]
         if len(parts) < 3:
-            raise ParsingError(
-                f"SuttaCentral URL must be '/<uid>/<lang>/<author>': {source!r}"
-            )
+            raise ParsingError(f"SuttaCentral URL must be '/<uid>/<lang>/<author>': {source!r}")
         uid, lang, author = parts[0], parts[1], parts[2]
         return SuttaRef(uid=uid, author=author, lang=lang)
 
     raise ParsingError(f"Not a SuttaCentral reference: {source!r}")
+
+
+def _default_fetch_json(url: str) -> dict:
+    """Real HTTP fetcher for the SuttaCentral API (exercised in live runs, not unit tests)."""
+    import requests
+
+    response = requests.get(url, timeout=30, headers={"User-Agent": "meditation-db-ingest/0.1"})
+    response.raise_for_status()
+    return response.json()
 
 
 class SuttaCentralParser:
@@ -97,10 +109,63 @@ class SuttaCentralParser:
     def __init__(self, fetch_json: Optional[Callable[[str], dict]] = None):
         """Args:
         fetch_json: Injectable ``url -> parsed JSON`` fetcher (defaults to a real
-            HTTP fetcher, wired in the parse step). Tests inject a fake.
+            HTTP fetcher). Tests inject a fake to avoid network access.
         """
         self._fetch_json = fetch_json
 
     def can_parse(self, source: str) -> bool:
         """True for SuttaCentral reading URLs or ``sc:`` shorthand."""
         return bool(_SC_URL.match(source) or _SC_SHORTHAND.match(source))
+
+    def parse(self, source: str) -> ParseResult:
+        """Fetch a sutta from the SuttaCentral API and return it as markdown.
+
+        Segmented (bilara) translations are reconstructed from ``html_text`` +
+        ``translation_text``; legacy translations use their inline HTML directly.
+
+        Raises:
+            ParsingError: On an unrecognizable source or empty text content.
+        """
+        ref = parse_sutta_ref(source)
+        fetch = self._fetch_json or _default_fetch_json
+
+        suttas = fetch(f"{_API_BASE}/suttas/{ref.uid}/{ref.author}?lang={ref.lang}")
+        segmented = bool(suttas.get("segmented"))
+        if segmented:
+            bilara = fetch(f"{_API_BASE}/bilarasuttas/{ref.uid}/{ref.author}?lang={ref.lang}")
+            html = bilara_to_html(bilara)
+        else:
+            html = (suttas.get("translation") or {}).get("text") or ""
+
+        markdown = md(html, heading_style="ATX").strip()
+        if not markdown:
+            raise ParsingError(f"No text content returned for {source!r}")
+
+        suttaplex = suttas.get("suttaplex") or {}
+        title = (
+            self._first_h1(markdown)
+            or suttaplex.get("original_title")
+            or suttaplex.get("translated_title")
+            or ref.uid
+        )
+        return ParseResult(
+            content=markdown,
+            title=title,
+            metadata={
+                "source": "suttacentral",
+                "uid": ref.uid,
+                "author_uid": ref.author,
+                "lang": ref.lang,
+                "segmented": segmented,
+                "reading_url": f"https://suttacentral.net/{ref.uid}/{ref.lang}/{ref.author}",
+            },
+        )
+
+    @staticmethod
+    def _first_h1(markdown: str) -> Optional[str]:
+        """Return the text of the first level-1 markdown heading, if any."""
+        for line in markdown.split("\n")[:40]:
+            match = re.match(r"^#\s+(.+)$", line.strip())
+            if match:
+                return match.group(1).strip()
+        return None
