@@ -19,16 +19,18 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Configure engine based on environment
-if settings.database.is_supabase:
-    # Supabase-optimized configuration
-    # Critical: Add connection timeouts and keepalives for reliable connections
+if settings.database.is_remote:
+    # Managed/remote Postgres (Neon, etc.): connection resilience for providers
+    # that suspend idle connections (Neon scale-to-zero) and drop them mid-pool.
+    # SSL is taken from the URL (append ?sslmode=require) rather than connect_args,
+    # so sslmode is never specified twice.
     engine = create_engine(
         settings.database.url,
         pool_size=settings.database.pool_size,
         max_overflow=settings.database.max_overflow,
         pool_timeout=settings.database.pool_timeout,
-        pool_recycle=300,  # Recycle connections every 5 min (Supabase may kill them sooner)
-        pool_pre_ping=True,  # Verify connections before use
+        pool_recycle=settings.database.pool_recycle,  # recycle stale connections proactively
+        pool_pre_ping=True,  # validate + transparently reconnect before use
         echo=settings.database.echo,
         connect_args={
             "connect_timeout": 10,  # Fail fast if connection takes >10s
@@ -36,10 +38,9 @@ if settings.database.is_supabase:
             "keepalives_idle": 30,  # Start keepalives after 30s idle
             "keepalives_interval": 10,  # Send keepalive every 10s
             "keepalives_count": 5,  # Give up after 5 failed keepalives
-            "sslmode": "require",  # Supabase requires SSL
         },
     )
-    logger.info("Initialized Supabase database connection with pooling")
+    logger.info("Initialized remote (managed) database connection with resilient pooling")
 else:
     # Local development configuration
     engine = create_engine(

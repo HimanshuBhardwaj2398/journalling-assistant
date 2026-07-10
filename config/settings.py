@@ -57,9 +57,17 @@ class DatabaseSettings(BaseSettings):
         return v
 
     @property
-    def is_supabase(self) -> bool:
-        """Check if using Supabase database."""
-        return "supabase.com" in self.url or "supabase.co" in self.url
+    def is_remote(self) -> bool:
+        """True for managed/remote Postgres (Neon, Supabase, any non-local host).
+
+        Remote databases require TLS and benefit from connection resilience
+        (``pool_pre_ping`` + recycle), because providers like Neon suspend idle
+        connections (scale-to-zero) and drop them from under the pool.
+        """
+        from urllib.parse import urlparse
+
+        host = (urlparse(self.url).hostname or "").lower()
+        return host not in ("", "localhost", "127.0.0.1", "::1")
 
 
 class EmbeddingSettings(BaseSettings):

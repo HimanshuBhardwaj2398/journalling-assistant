@@ -177,9 +177,9 @@ def verify_settings():
             print(f"   ⚠ {name} not set (may be optional)")
             # Don't fail on optional settings
 
-    # Check if using Supabase
-    if settings.database.is_supabase:
-        print("   ✓ Using Supabase database")
+    # Check whether this is a managed/remote database (Neon, etc.)
+    if settings.database.is_remote:
+        print("   ✓ Using remote (managed) PostgreSQL database")
     else:
         print("   ℹ Using local PostgreSQL database")
 
