@@ -130,7 +130,7 @@ class RetrievalEngine:
 
     def __init__(
         self,
-        collection_name: str = "documents",
+        collection_name: str = "buddhist_texts",
         db_url: Optional[str] = None,
         embedding_model: str = "voyage-3.5",
         tracer: Optional[LangfuseTracer] = None,

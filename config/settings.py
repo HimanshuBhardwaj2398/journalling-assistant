@@ -194,6 +194,26 @@ class LangfuseSettings(BaseSettings):
         return bool(self.tracing_enabled and self.public_key and self.secret_key)
 
 
+class VectorSettings(BaseSettings):
+    """Vector store configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="VECTOR_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    collection_name: str = Field(
+        default="buddhist_texts",
+        description=(
+            "Default vector store collection. Collections partition sources by type "
+            "(e.g. buddhist_texts, talks, meditation_research, scientific_discussions); "
+            "callers pass their own collection_name to route a resource elsewhere."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     """
     Root application settings.
@@ -221,6 +241,7 @@ class Settings(BaseSettings):
     parsing: ParsingSettings = Field(default_factory=ParsingSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    vector: VectorSettings = Field(default_factory=VectorSettings)
 
     @field_validator("hf_token", mode="before")
     @classmethod

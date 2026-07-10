@@ -59,7 +59,7 @@ class CollectionService:
 
     def __init__(
         self,
-        collection_name: str = "meditation_chunks",
+        collection_name: str = "buddhist_texts",
         db_url: Optional[str] = None,
     ):
         """

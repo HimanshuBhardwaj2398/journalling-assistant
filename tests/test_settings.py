@@ -28,6 +28,13 @@ def test_langfuse_settings_detect_when_configured(monkeypatch):
     assert settings.langfuse.is_configured is True
 
 
+def test_vector_collection_name_defaults_to_buddhist_texts(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
+    settings = Settings()
+
+    assert settings.vector.collection_name == "buddhist_texts"
+
+
 def test_is_remote_true_for_neon_host():
     """Neon (managed Postgres) must be treated as remote: needs TLS + resilient pooling."""
     settings = DatabaseSettings(

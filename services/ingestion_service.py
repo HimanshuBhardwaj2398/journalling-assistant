@@ -17,7 +17,7 @@ from ingestion.embed import VectorStoreConfig
 from ingestion.orchestrator import IngestionOrchestrator
 
 
-def get_orchestrator(collection_name: str = "meditation_chunks") -> IngestionOrchestrator:
+def get_orchestrator(collection_name: str = "buddhist_texts") -> IngestionOrchestrator:
     """Initialize ingestion orchestrator with vector store config.
 
     Args:
@@ -42,7 +42,7 @@ async def ingest_document_async(
     doc_type: str,
     category: str,
     tags: list,
-    collection_name: str = "meditation_chunks",
+    collection_name: str = "buddhist_texts",
     on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
 ) -> dict:
     """
@@ -119,7 +119,7 @@ def ingest_document(
     doc_type: str,
     category: str,
     tags: list,
-    collection_name: str = "meditation_chunks",
+    collection_name: str = "buddhist_texts",
     on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
 ) -> dict:
     """Synchronous wrapper for async ingestion."""
@@ -139,7 +139,7 @@ def ingest_document(
 
 async def process_document_by_id_async(
     doc_id: int,
-    collection_name: str = "meditation_chunks",
+    collection_name: str = "buddhist_texts",
     on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
     reprocess_mode: Optional[str] = None,
     clear_markdown: bool = False,
@@ -168,7 +168,7 @@ async def process_document_by_id_async(
 
 def process_document_by_id(
     doc_id: int,
-    collection_name: str = "meditation_chunks",
+    collection_name: str = "buddhist_texts",
     on_stage_update: Optional[Callable[[str, StageStatus], None]] = None,
     reprocess_mode: Optional[str] = None,
     clear_markdown: bool = False,
