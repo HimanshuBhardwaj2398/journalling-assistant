@@ -89,6 +89,39 @@ def parse_sutta_ref(source: str) -> SuttaRef:
     raise ParsingError(f"Not a SuttaCentral reference: {source!r}")
 
 
+def catalog_entries_from_tree(
+    paths: list[str], *, lang: str = "en", author: str = "sujato"
+) -> list[dict]:
+    """Extract sutta catalog entries from bilara-data translation file paths.
+
+    Filters a flat list of repo paths (e.g. from the GitHub git-tree API) to the
+    requested translator+language under ``translation/<lang>/<author>/sutta/`` and
+    derives each sutta's uid and nikaya. Handles both ``<uid>_translation-...json``
+    and plain ``<uid>.json`` filenames, and nested collections (e.g. ``sn/sn1/...``).
+
+    Returns:
+        One dict per sutta: ``uid``, ``nikaya``, ``author``, ``lang``, ``reading_url``.
+    """
+    prefix = f"translation/{lang}/{author}/sutta/"
+    entries: list[dict] = []
+    for path in paths:
+        if not (path.startswith(prefix) and path.endswith(".json")):
+            continue
+        parts = path[len(prefix) :].split("/")
+        nikaya = parts[0]
+        uid = parts[-1][: -len(".json")].split("_")[0]
+        entries.append(
+            {
+                "uid": uid,
+                "nikaya": nikaya,
+                "author": author,
+                "lang": lang,
+                "reading_url": f"https://suttacentral.net/{uid}/{lang}/{author}",
+            }
+        )
+    return entries
+
+
 def _default_fetch_json(url: str) -> dict:
     """Real HTTP fetcher for the SuttaCentral API (exercised in live runs, not unit tests)."""
     import requests

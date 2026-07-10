@@ -146,3 +146,34 @@ def test_factory_routes_suttacentral_ahead_of_urlparser():
         factory.get_parser("https://suttacentral.net/mn1/en/sujato"), SuttaCentralParser
     )
     assert isinstance(factory.get_parser("https://example.com/article"), URLParser)
+
+
+def test_catalog_entries_from_tree_extracts_uid_nikaya_and_reading_url():
+    from ingestion.suttacentral import catalog_entries_from_tree
+
+    paths = [
+        "translation/en/sujato/sutta/mn/mn1_translation-en-sujato.json",
+        "translation/en/sujato/sutta/sn/sn1/sn1.1_translation-en-sujato.json",
+        "translation/en/sujato/sutta/dn/dn1_translation-en-sujato.json",
+        "root/pli/ms/sutta/mn/mn1_root-pli-ms.json",  # different layer -> ignored
+        "translation/de/sabbamitta/sutta/mn/mn1_translation-de-sabbamitta.json",  # other lang/author
+        "translation/en/sujato/sutta/mn/_index.json.bak",  # not .json -> ignored
+    ]
+
+    entries = catalog_entries_from_tree(paths, lang="en", author="sujato")
+    by_uid = {e["uid"]: e for e in entries}
+
+    assert set(by_uid) == {"mn1", "sn1.1", "dn1"}
+    assert by_uid["sn1.1"]["nikaya"] == "sn"
+    assert by_uid["mn1"]["reading_url"] == "https://suttacentral.net/mn1/en/sujato"
+    assert by_uid["dn1"]["author"] == "sujato"
+
+
+def test_catalog_entries_from_tree_handles_plain_uid_filenames():
+    from ingestion.suttacentral import catalog_entries_from_tree
+
+    entries = catalog_entries_from_tree(
+        ["translation/en/sujato/sutta/mn/mn1.json"], lang="en", author="sujato"
+    )
+
+    assert entries[0]["uid"] == "mn1"
