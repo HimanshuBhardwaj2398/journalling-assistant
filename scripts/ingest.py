@@ -47,15 +47,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from config.logging_config import setup_logging
 from db.crud import DocumentCRUD
 from db.database import session_scope
 from ingestion.embed import VectorStoreConfig
 from ingestion.orchestrator import IngestionOrchestrator, ReprocessMode
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

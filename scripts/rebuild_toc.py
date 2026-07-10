@@ -38,14 +38,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from config.logging_config import setup_logging
 from db.crud import ChunkCRUD, DocumentCRUD
 from db.database import session_scope
 from db.schema import DocumentStatus
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
