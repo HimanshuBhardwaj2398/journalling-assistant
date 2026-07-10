@@ -18,6 +18,7 @@ from markdownify import markdownify as md
 
 from core.exceptions import ConfigurationError, ParsingError
 from core.interfaces import Parser, ParseResult
+from ingestion.suttacentral import SuttaCentralParser
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,7 @@ class ParserFactory:
             llamaparse_api_key: API key for PDF parsing (optional, uses env var if not provided)
         """
         self._parsers = [
+            SuttaCentralParser(),
             URLParser(),
         ]
 

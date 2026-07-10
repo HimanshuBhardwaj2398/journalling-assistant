@@ -135,3 +135,14 @@ def test_parse_legacy_uses_inline_translation_html():
     assert "So I have heard." in result.content
     assert result.metadata["segmented"] is False
     assert result.metadata["author_uid"] == "bodhi"
+
+
+def test_factory_routes_suttacentral_ahead_of_urlparser():
+    from ingestion.parsing import ParserFactory, URLParser
+
+    factory = ParserFactory()
+
+    assert isinstance(
+        factory.get_parser("https://suttacentral.net/mn1/en/sujato"), SuttaCentralParser
+    )
+    assert isinstance(factory.get_parser("https://example.com/article"), URLParser)
