@@ -17,6 +17,7 @@ Usage:
 """
 
 import os
+
 import litellm
 
 # Suppress litellm verbose output in notebooks
@@ -36,8 +37,7 @@ class LLMClient:
         provider = os.getenv("LLM_PROVIDER", "groq").lower().strip()
         if provider not in _PROVIDER_DEFAULTS:
             raise ValueError(
-                f"Unknown LLM_PROVIDER '{provider}'. "
-                f"Must be one of: {list(_PROVIDER_DEFAULTS)}"
+                f"Unknown LLM_PROVIDER '{provider}'. Must be one of: {list(_PROVIDER_DEFAULTS)}"
             )
         model = os.getenv("LLM_MODEL", _PROVIDER_DEFAULTS[provider]).strip()
         self.model_id = f"{provider}/{model}"

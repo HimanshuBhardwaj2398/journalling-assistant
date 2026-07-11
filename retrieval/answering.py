@@ -81,7 +81,9 @@ class GroundedAnswerService:
             raise ValueError("Cannot synthesize an answer without search results.")
 
         selected_results = list(search_results[: self._max_chunks])
-        citations = [self._build_citation(result, idx) for idx, result in enumerate(selected_results, 1)]
+        citations = [
+            self._build_citation(result, idx) for idx, result in enumerate(selected_results, 1)
+        ]
         user_prompt = self._build_user_prompt(query=query, search_results=selected_results)
 
         with self._tracer.observe(

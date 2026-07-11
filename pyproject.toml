@@ -50,7 +50,8 @@ openai = ">=1.91.1,<2.0.0"
 
 # UI and visualization
 streamlit = ">=1.30.0,<2.0.0"
-litellm = ">=1.40.0,<2.0.0"
+# Exclude litellm 1.82.8 (CVE-2026-42208: compromised wheel exfiltrates credentials on import).
+litellm = ">=1.40.0,<2.0.0,!=1.82.8"
 langfuse = ">=4.0.0,<5.0.0"
 
 [tool.poetry.group.dev.dependencies]
@@ -92,6 +93,8 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Exploratory notebooks are not held to lint/format standards.
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
@@ -105,3 +108,9 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+# Root is the package base so e.g. retrieval/llm_client.py is only `retrieval.llm_client`
+# (not also top-level `llm_client`), and third-party libs without stubs don't error.
+explicit_package_bases = true
+namespace_packages = true
+disable_error_code = ["import-untyped"]
+exclude = ["^scripts/", "^alembic/"]
