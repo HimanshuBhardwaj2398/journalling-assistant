@@ -1,7 +1,8 @@
 """Tests for EvalLLMClient — runs in offline mode using litellm mock."""
-import os
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 def make_mock_response(content: str):
@@ -20,6 +21,7 @@ class TestEvalLLMClientInit:
         monkeypatch.delenv("LLM_PROVIDER", raising=False)
         monkeypatch.delenv("LLM_MODEL", raising=False)
         from retrieval.llm_client import EvalLLMClient
+
         client = EvalLLMClient()
         assert client.model_id == "groq/llama-3.3-70b-versatile"
 
@@ -27,6 +29,7 @@ class TestEvalLLMClientInit:
         monkeypatch.setenv("LLM_PROVIDER", "ollama")
         monkeypatch.delenv("LLM_MODEL", raising=False)
         from retrieval.llm_client import EvalLLMClient
+
         client = EvalLLMClient()
         assert client.model_id == "ollama/qwen2.5:7b"
 
@@ -34,6 +37,7 @@ class TestEvalLLMClientInit:
         monkeypatch.setenv("LLM_PROVIDER", "openai")
         monkeypatch.delenv("LLM_MODEL", raising=False)
         from retrieval.llm_client import EvalLLMClient
+
         client = EvalLLMClient()
         assert client.model_id == "openai/gpt-4o-mini"
 
@@ -41,6 +45,7 @@ class TestEvalLLMClientInit:
         monkeypatch.setenv("LLM_PROVIDER", "ollama")
         monkeypatch.setenv("LLM_MODEL", "phi4-mini")
         from retrieval.llm_client import EvalLLMClient
+
         client = EvalLLMClient()
         assert client.model_id == "ollama/phi4-mini"
 
@@ -48,6 +53,7 @@ class TestEvalLLMClientInit:
         monkeypatch.setenv("LLM_PROVIDER", "unknown_provider")
         monkeypatch.delenv("LLM_MODEL", raising=False)
         from retrieval.llm_client import EvalLLMClient
+
         with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
             EvalLLMClient()
 
@@ -55,8 +61,10 @@ class TestEvalLLMClientInit:
 class TestEvalLLMClientComplete:
     def test_complete_returns_string(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "groq")
-        from retrieval.llm_client import EvalLLMClient
         import litellm
+
+        from retrieval.llm_client import EvalLLMClient
+
         with patch.object(litellm, "completion", return_value=make_mock_response('{"score": 4}')):
             client = EvalLLMClient()
             result = client.complete(messages=[{"role": "user", "content": "test"}])
@@ -64,8 +72,10 @@ class TestEvalLLMClientComplete:
 
     def test_complete_strips_whitespace(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "groq")
-        from retrieval.llm_client import EvalLLMClient
         import litellm
+
+        from retrieval.llm_client import EvalLLMClient
+
         with patch.object(litellm, "completion", return_value=make_mock_response("  hello  \n")):
             client = EvalLLMClient()
             result = client.complete(messages=[{"role": "user", "content": "test"}])

@@ -32,6 +32,7 @@ def test_rrf_dedup_uses_hash_when_no_uuid():
 
 def test_minmax_normalization_bounds():
     from retrieval.query import _minmax_normalize
+
     scores = [0.2, 0.5, 0.8, 1.0]
     normed = _minmax_normalize(scores)
     assert normed[0] == 0.0
@@ -41,6 +42,7 @@ def test_minmax_normalization_bounds():
 
 def test_minmax_normalization_all_same():
     from retrieval.query import _minmax_normalize
+
     # Should not divide by zero
     normed = _minmax_normalize([0.5, 0.5, 0.5])
     assert normed == [0.5, 0.5, 0.5]

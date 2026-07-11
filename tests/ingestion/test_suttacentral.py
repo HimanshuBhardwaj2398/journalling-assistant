@@ -106,9 +106,7 @@ def test_parse_segmented_reconstructs_markdown_and_metadata():
             "mn1:1.1": "So I have heard.",
         },
     }
-    fetch = _FakeFetcher(
-        {"/api/suttas/mn1/sujato": suttas, "/api/bilarasuttas/mn1/sujato": bilara}
-    )
+    fetch = _FakeFetcher({"/api/suttas/mn1/sujato": suttas, "/api/bilarasuttas/mn1/sujato": bilara})
 
     result = SuttaCentralParser(fetch_json=fetch).parse("sc:mn1/sujato")
 
@@ -249,9 +247,7 @@ def test_parse_includes_nikaya_tags_in_metadata():
         "html_text": {"mn1:0.2": "<h1>{}</h1>"},
         "translation_text": {"mn1:0.2": "The Root of All Things"},
     }
-    fetch = _FakeFetcher(
-        {"/api/suttas/mn1/sujato": suttas, "/api/bilarasuttas/mn1/sujato": bilara}
-    )
+    fetch = _FakeFetcher({"/api/suttas/mn1/sujato": suttas, "/api/bilarasuttas/mn1/sujato": bilara})
 
     result = SuttaCentralParser(fetch_json=fetch).parse("sc:mn1/sujato")
 

@@ -123,7 +123,9 @@ def _to_chunk_like_objects(results: list[SearchResult]) -> list[SimpleNamespace]
         chunk_like_objects.append(
             SimpleNamespace(
                 uuid=result.chunk_uuid or f"result-{result.rank}",
-                chunk_index=result.chunk_index if result.chunk_index is not None else result.rank - 1,
+                chunk_index=result.chunk_index
+                if result.chunk_index is not None
+                else result.rank - 1,
                 chunk_text=result.text,
                 chunk_metadata=result.metadata,
             )
@@ -209,9 +211,7 @@ def _render_result_cards(results: list[SearchResult]) -> None:
     for result in results:
         source_title = result.source_title or "Unknown source"
         chunk_label = result.chunk_index if result.chunk_index is not None else "?"
-        expander_label = (
-            f"#{result.rank} · {source_title} · chunk {chunk_label} · score {_format_score(result.score)}"
-        )
+        expander_label = f"#{result.rank} · {source_title} · chunk {chunk_label} · score {_format_score(result.score)}"
         with st.expander(expander_label, expanded=(result.rank == 1)):
             meta_col1, meta_col2, meta_col3 = st.columns(3)
             meta_col1.metric("Rank", result.rank)
@@ -220,10 +220,12 @@ def _render_result_cards(results: list[SearchResult]) -> None:
 
             st.markdown(f"**Source:** {source_title}")
             if result.document_id is not None:
-                if st.button("Open document detail", key=f"rag_open_doc_{result.rank}_{result.document_id}"):
+                if st.button(
+                    "Open document detail", key=f"rag_open_doc_{result.rank}_{result.document_id}"
+                ):
                     _open_document_detail(result.document_id)
 
-            header_paths = _extract_header_paths(result.metadata)
+            header_paths = extract_header_paths(result.metadata)
             if header_paths:
                 st.markdown("**Header paths**")
                 for path in header_paths:
@@ -259,7 +261,9 @@ def _render_answer_tab(answer_response: AnswerResponse) -> None:
             expanded=(citation.label in used_labels),
         ):
             st.write(f"**Document ID:** {citation.document_id or '-'}")
-            st.write(f"**Chunk Index:** {citation.chunk_index if citation.chunk_index is not None else '-'}")
+            st.write(
+                f"**Chunk Index:** {citation.chunk_index if citation.chunk_index is not None else '-'}"
+            )
             if citation.header_path:
                 st.write(f"**Header Path:** {citation.header_path}")
             if citation.chunk_uuid:
@@ -291,7 +295,9 @@ def _render_trace_tab(
     if answer_response is not None:
         st.subheader("Answer Trace")
         if answer_response.trace.langfuse_trace_url:
-            st.markdown(f"[Open Answer Trace In Langfuse]({answer_response.trace.langfuse_trace_url})")
+            st.markdown(
+                f"[Open Answer Trace In Langfuse]({answer_response.trace.langfuse_trace_url})"
+            )
         st.json(_answer_trace_to_dict(answer_response), expanded=True)
         with st.expander("System Prompt", expanded=False):
             st.code(answer_response.trace.system_prompt, language="markdown")
@@ -429,7 +435,9 @@ def render() -> None:
         st.dataframe(_build_result_rows(response), use_container_width=True, hide_index=True)
         if response.results:
             with st.expander("Chunk Inspector View", expanded=False):
-                render_chunk_inspector(_to_chunk_like_objects(response.results), key_prefix="rag_results")
+                render_chunk_inspector(
+                    _to_chunk_like_objects(response.results), key_prefix="rag_results"
+                )
             _render_result_cards(response.results)
         else:
             st.info("No results matched the current query and filters.")

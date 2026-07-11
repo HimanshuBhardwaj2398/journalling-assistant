@@ -42,7 +42,7 @@ async def test_embedding_stage_sets_uuid_and_document_metadata():
         chunks=[
             Document(page_content="chunk one", metadata={}),
             Document(page_content="chunk two", metadata={}),
-        ]
+        ],
     )
 
     result = await stage.execute(context)

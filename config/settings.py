@@ -22,7 +22,7 @@ class DatabaseSettings(BaseSettings):
 
     url: str = Field(
         default="",
-        description="PostgreSQL connection URL (Supabase or local)",
+        description="PostgreSQL connection URL (Supabase or local or Neon)",
     )
     pool_size: int = Field(
         default=10,

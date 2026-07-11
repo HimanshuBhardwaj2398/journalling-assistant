@@ -305,15 +305,16 @@ class RetrievalEngine:
                 text=doc.page_content,
                 score=float(score),
                 chunk_uuid=doc.metadata.get("uuid"),
-                document_id=doc.metadata.get("document_id")
-                or doc.metadata.get("original_doc_id"),
+                document_id=doc.metadata.get("document_id") or doc.metadata.get("original_doc_id"),
                 metadata=doc.metadata,
                 rank=i + 1,
             )
             for i, (doc, score) in enumerate(raw)
         ]
 
-    def _mmr_search(self, query: str, k: int = 5, fetch_k: int = 20, **kwargs) -> List[SearchResult]:
+    def _mmr_search(
+        self, query: str, k: int = 5, fetch_k: int = 20, **kwargs
+    ) -> List[SearchResult]:
         """Maximal Marginal Relevance search for diverse results."""
         raw = self.vector_store.max_marginal_relevance_search(query, k=k, fetch_k=fetch_k)
         return [
@@ -321,8 +322,7 @@ class RetrievalEngine:
                 text=doc.page_content,
                 score=None,
                 chunk_uuid=doc.metadata.get("uuid"),
-                document_id=doc.metadata.get("document_id")
-                or doc.metadata.get("original_doc_id"),
+                document_id=doc.metadata.get("document_id") or doc.metadata.get("original_doc_id"),
                 metadata=doc.metadata,
                 rank=i + 1,
             )
@@ -343,8 +343,7 @@ class RetrievalEngine:
                 text=doc.page_content,
                 score=None,
                 chunk_uuid=doc.metadata.get("uuid"),
-                document_id=doc.metadata.get("document_id")
-                or doc.metadata.get("original_doc_id"),
+                document_id=doc.metadata.get("document_id") or doc.metadata.get("original_doc_id"),
                 metadata=doc.metadata,
                 rank=i + 1,
             )
@@ -375,8 +374,7 @@ class RetrievalEngine:
                 text=doc.page_content,
                 score=rrf_score,
                 chunk_uuid=doc.metadata.get("uuid"),
-                document_id=doc.metadata.get("document_id")
-                or doc.metadata.get("original_doc_id"),
+                document_id=doc.metadata.get("document_id") or doc.metadata.get("original_doc_id"),
                 metadata=doc.metadata,
                 rank=i + 1,
             )
