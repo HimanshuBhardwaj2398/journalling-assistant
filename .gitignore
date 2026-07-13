@@ -56,7 +56,9 @@ CLAUDE.md
 # Git worktrees
 .worktrees/
 
-# Internal planning & sprint docs (not end-user docs)
-docs/plans/
+# Internal implementation plans stay private; design docs are published.
+docs/plans/*
+!docs/plans/*-design.md
+!docs/plans/*-research.md
 docs/sprints/
 docs/deployment/
