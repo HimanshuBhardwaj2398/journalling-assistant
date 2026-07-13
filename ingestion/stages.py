@@ -9,6 +9,8 @@ import logging
 import uuid as uuid_lib
 from typing import List
 
+from langchain.schema import Document as LangchainDocument
+
 from core.exceptions import ChunkingError, DatabaseError, EmbeddingError, ParsingError
 from core.interfaces import PipelineContext, PipelineStage
 from ingestion.chunking import Config as ChunkingConfig
@@ -107,7 +109,6 @@ class ParsingStage(PipelineStage):
                             doc.tags = existing + [t for t in tags if t not in existing]
                         if structured:
                             doc.doc_metadata = {**(doc.doc_metadata or {}), **structured}
-                        session.commit()
                 logger.info(
                     f"Saved markdown/title/tags to database for document {context.document_id}"
                 )
@@ -248,30 +249,39 @@ class EmbeddingStage(PipelineStage):
         logger.info(f"Embedding {len(context.chunks)} chunks")
 
         try:
-            # Add UUIDs to each chunk BEFORE embedding
+            # Enrich copies, not the shared chunk objects — the input context
+            # must stay unchanged (PipelineContext immutability is shallow).
+            enriched_chunks: List[LangchainDocument] = []
             expected_ids = []
             for chunk in context.chunks:
+                metadata = dict(chunk.metadata)
                 if context.document_id is not None:
-                    chunk.metadata.setdefault("document_id", context.document_id)
-                    chunk.metadata.setdefault("original_doc_id", context.document_id)
+                    metadata.setdefault("document_id", context.document_id)
+                    metadata.setdefault("original_doc_id", context.document_id)
                 if context.title:
-                    chunk.metadata.setdefault("source_title", context.title)
+                    metadata.setdefault("source_title", context.title)
                 # Tag each chunk with source/nikaya metadata for retrieval filtering
                 for key in ("source", "uid", "author_uid", "lang", "nikaya", "nikaya_name"):
                     if key in context.source_metadata:
-                        chunk.metadata.setdefault(key, context.source_metadata[key])
+                        metadata.setdefault(key, context.source_metadata[key])
                 chunk_uuid = str(uuid_lib.uuid4())
-                chunk.metadata["uuid"] = chunk_uuid
-                # PGVector uses Document.id as the persisted vector ID.
-                chunk.id = chunk_uuid
+                metadata["uuid"] = chunk_uuid
+                enriched_chunks.append(
+                    LangchainDocument(
+                        # PGVector uses Document.id as the persisted vector ID.
+                        id=chunk_uuid,
+                        page_content=chunk.page_content,
+                        metadata=metadata,
+                    )
+                )
                 expected_ids.append(chunk_uuid)
 
             # Embed and store in vector database
-            vector_ids = self.vector_store_manager.embed_documents(context.chunks)
+            vector_ids = self.vector_store_manager.embed_documents(enriched_chunks)
 
-            if len(vector_ids) != len(context.chunks):
+            if len(vector_ids) != len(enriched_chunks):
                 raise EmbeddingError(
-                    f"Embedding mismatch: {len(context.chunks)} chunks, "
+                    f"Embedding mismatch: {len(enriched_chunks)} chunks, "
                     f"{len(vector_ids)} embeddings stored"
                 )
 
@@ -286,7 +296,7 @@ class EmbeddingStage(PipelineStage):
 
             logger.info(f"Successfully embedded {len(vector_ids)} chunks")
 
-            return context.mark_stage_completed(self.name)
+            return context.with_update(chunks=enriched_chunks).mark_stage_completed(self.name)
 
         except EmbeddingError as e:
             logger.error(f"Embedding failed: {e}")

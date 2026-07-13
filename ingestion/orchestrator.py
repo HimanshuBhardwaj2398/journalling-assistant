@@ -402,7 +402,6 @@ class IngestionOrchestrator:
 
                     doc.status = DocumentStatus.PENDING
                     doc.status_details = f"Reprocessing ({mode.value}) - pipeline rerun requested"
-                    session.commit()
 
                 logger.info(
                     "Reprocessing document %s (%s, clear_markdown=%s)",

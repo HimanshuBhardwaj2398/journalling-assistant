@@ -1,3 +1,10 @@
+"""CRUD operations for documents and chunks.
+
+Transaction contract: methods flush (IDs materialize, constraint errors
+surface early) but never commit — the enclosing ``session_scope`` owns the
+transaction, so multi-step operations stay atomic.
+"""
+
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
@@ -61,8 +68,7 @@ class DocumentCRUD:
             status=status,
         )
         self.db.add(db_document)
-        self.db.commit()
-        self.db.refresh(db_document)
+        self.db.flush()
         return db_document
 
     def get_document_by_id(self, document_id: int) -> Optional[schema.Document]:
@@ -107,8 +113,7 @@ class DocumentCRUD:
         if doc:
             doc.status = status
             doc.status_details = status_details
-            self.db.commit()
-            self.db.refresh(doc)
+            self.db.flush()
         return doc
 
     def update_markdown(
@@ -129,8 +134,7 @@ class DocumentCRUD:
         doc = self.get_document_by_id(document_id)
         if doc:
             doc.markdown = markdown
-            self.db.commit()
-            self.db.refresh(doc)
+            self.db.flush()
         return doc
 
     def update_doc_metadata(
@@ -156,8 +160,7 @@ class DocumentCRUD:
                 doc.doc_metadata = {**doc.doc_metadata, **metadata_updates}
             else:
                 doc.doc_metadata = metadata_updates
-            self.db.commit()
-            self.db.refresh(doc)
+            self.db.flush()
         return doc
 
     def store_chunks(
@@ -181,8 +184,7 @@ class DocumentCRUD:
         doc = self.get_document_by_id(document_id)
         if doc:
             doc.chunks = chunks
-            self.db.commit()
-            self.db.refresh(doc)
+            self.db.flush()
         return doc
 
     def clear_chunks(
@@ -201,8 +203,7 @@ class DocumentCRUD:
         doc = self.get_document_by_id(document_id)
         if doc:
             doc.chunks = None
-            self.db.commit()
-            self.db.refresh(doc)
+            self.db.flush()
         return doc
 
     def get_documents_by_status(
@@ -271,7 +272,7 @@ class DocumentCRUD:
         doc = self.get_document_by_id(document_id)
         if doc:
             self.db.delete(doc)
-            self.db.commit()
+            self.db.flush()
             return True
         return False
 
@@ -313,10 +314,7 @@ class ChunkCRUD:
             chunks.append(chunk)
 
         self.db.add_all(chunks)
-        self.db.commit()
-
-        for chunk in chunks:
-            self.db.refresh(chunk)
+        self.db.flush()
 
         return chunks
 
@@ -378,8 +376,7 @@ class ChunkCRUD:
                 chunk.chunk_metadata = {**chunk.chunk_metadata, **metadata_updates}
             else:
                 chunk.chunk_metadata = metadata_updates
-            self.db.commit()
-            self.db.refresh(chunk)
+            self.db.flush()
         return chunk
 
     def delete_chunks_by_document(self, document_id: int) -> int:
@@ -395,5 +392,5 @@ class ChunkCRUD:
         deleted = (
             self.db.query(schema.Chunk).filter(schema.Chunk.document_id == document_id).delete()
         )
-        self.db.commit()
+        self.db.flush()
         return deleted

@@ -6,7 +6,7 @@ and ABC (abstract base classes) for key components of the ingestion pipeline.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol
 
@@ -84,13 +84,17 @@ class StageStatus(Enum):
     SKIPPED = "skipped"
 
 
-@dataclass
+@dataclass(frozen=True)
 class PipelineContext:
     """
     Immutable context passed through pipeline stages.
 
     Each stage creates a new context with updated fields using the
-    immutable update pattern (via with_update method).
+    immutable update pattern (via with_update method). The dataclass is
+    frozen, so attribute assignment raises FrozenInstanceError — but
+    ``with_update`` (dataclasses.replace) is shallow: contexts share the
+    contents of mutable fields. Stages must therefore copy anything they
+    enrich (e.g. chunks) instead of editing the shared objects in place.
 
     Attributes:
         document_id: Database ID of the document being processed
@@ -134,8 +138,6 @@ class PipelineContext:
         Example:
             new_ctx = ctx.with_update(title="New Title", parsed_content="...")
         """
-        from dataclasses import replace
-
         return replace(self, **kwargs)
 
     def mark_stage_completed(self, stage_name: str) -> "PipelineContext":
