@@ -41,8 +41,8 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
 - [x] `config/`
 - [x] `core/`
 - [x] `db/`
-- [ ] `observability/`
-- [ ] `ingestion/` *(partially done: `stages.py` + `orchestrator.py` reviewed in session 2 for the strategic questions; still to read properly: `chunking.py`, `parsing.py`, `embed.py`, `suttacentral.py`, `__init__.py`)*
+- [x] `observability/`
+- [x] `ingestion/`
 - [ ] `retrieval/`
 - [ ] `services/`
 - [ ] `views/`
@@ -78,8 +78,9 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
   - GREEN: CRUD `commit()+refresh()` → `flush()`; `PipelineContext` frozen; `EmbeddingStage` copies chunks; removed 2 redundant interior commits.
   - Verified: 112/112 tests pass, ruff clean, mypy unchanged (61 pre-existing errors at HEAD and after — legacy `Column[]` typing, fixed by backlog #8).
 - Blog entry 4 added: "Who owns state change?" — detailed case study of both fixes.
-- Committed on branch `refactor/state-ownership` and pushed.
-- Next: `observability/`, then finish `ingestion/`.
+- Committed on branch `refactor/state-ownership`; rebased onto main (PR #4 was squash-merged, so the branch was replayed onto `origin/main` to keep the diff clean); **PR #5 opened**: https://github.com/HimanshuBhardwaj2398/meditation-assistant/pull/5
+- Completed `observability/` and the rest of `ingestion/` (notes below). Three verified findings: CHUNKING_* env settings never reach the chunker; two distinct `EmbeddingError` classes make a `catch` branch dead; deprecated `langchain_community` PGVector used while `langchain-postgres` is installed but unused. Backlog #10–#16 added.
+- Next: `retrieval/`.
 
 ## Strategic Questions (asked session 2, answered with code evidence)
 
@@ -192,6 +193,58 @@ Filled in as each folder is completed, in review order. Use the Queue above to j
 
 ---
 
+### `observability/` — Tier 1
+
+**Files**: `__init__.py` (2) · `langfuse.py` (196)
+
+**What it does**: Optional Langfuse tracing wrapper for the query layer. `LangfuseTracer.observe(...)` yields a `LangfuseObservationHandle`; `retrieval/` calls `handle.update(...)`/`handle.score(...)` without ever checking whether tracing is on.
+
+**Abstraction level**: Exactly right — a textbook anti-corruption layer. The rest of the codebase depends on this thin wrapper, never on the `langfuse` SDK directly, so SDK version drift (or removal) is contained to one file.
+
+**Best-practice notes**:
+1. **The `except Exception` double standard, done correctly.** Every operation here swallows exceptions with a warning log — and that's *right*, because observability must never crash the observed system. Contrast with the pipeline, where failures must propagate. The acceptability of broad catches is a property of the layer's failure budget, not a universal style rule.
+2. Dataclass with underscore fields (`_observation`, `_client`) — they show up in `__init__`, `repr`, and `eq`. Works, but `field(repr=False)` or a plain class would be cleaner. Minor.
+3. `flush()` on every `observe` exit — a network call per observation; fine for Streamlit, would need buffering under real load.
+
+**Notable Python patterns**:
+- **Null Object pattern** — `LangfuseObservationHandle(enabled=False)` is a do-nothing stand-in, so callers have zero `if tracing:` branches. The absence of a feature is modeled as an object, not as a conditional at every call site.
+- **Optional dependency handling** — `from langfuse import Langfuse` inside `_build_client`, `ImportError` → informative log + disabled tracer. The app runs fine without the package installed.
+- **Duck-typed SDK negotiation** — `getattr(client, "get_trace_url", None)` + `callable(...)` checks, and `_refresh_trace_link` even negotiates the function signature by catching `TypeError` and retrying with an argument. Brittle-looking but deliberate: tolerate SDK API drift rather than pin behavior to one version.
+- Same `@lru_cache()` factory-singleton as `get_settings()` — the codebase has a consistent idiom for process-wide lazies.
+
+---
+
+### `ingestion/` — Tier 2 (completed; stages/orchestrator were covered in session 2)
+
+**Files**: `__init__.py` (66) · `parsing.py` (316) · `chunking.py` (525) · `embed.py` (275) · `suttacentral.py` (286) · plus `stages.py` (475) / `orchestrator.py` (607) from session 2
+
+**What it does**: The full parse → chunk → embed pipeline plus the SuttaCentral source adapter. Reading all of it at once makes the codebase's *strata* visible: `embed.py`/`chunking.py` are the oldest layer (own exceptions, own config, `os.getenv`), `parsing.py` is the middle (protocol-aware, but module-level `load_dotenv()`), `suttacentral.py` is the newest and cleanest (constructor-injected fetcher, pure functions, frozen dataclass).
+
+**Verified findings (the big three)**:
+1. **⭐ `CHUNKING_*` settings are dead ends.** `config/settings.py` defines `ChunkingSettings` (env-driven), and `chunking.py` defines its own `Config` dataclass with *duplicated defaults*. Grep confirms nothing ever maps `get_settings().chunking` → `Config`; orchestrator and chunker both fall back to `Config()` defaults. Changing `CHUNKING_MAX_SIZE` in `.env` does nothing to the pipeline. Two sources of truth, one of them decorative. Backlog #12.
+2. **⭐ Two different `EmbeddingError` classes.** `core/exceptions.py` has one (child of `PipelineError`); `ingestion/embed.py` defines another (child of its own `VectorStoreError`). `EmbeddingStage` imports the core one, but `VectorStoreManager` raises the embed one — so the stage's `except EmbeddingError` branch **never catches the manager's errors**; they fall through to the generic `except Exception`. Works by accident today (both branches mark the stage failed). A shadow exception hierarchy that predates `core/` and was never unified. Backlog #10.
+3. **Deprecated `PGVector`.** Both `embed.py` and `retrieval/query.py` import `langchain_community.vectorstores.pgvector` (deprecated), while `langchain-postgres` (its replacement) is in `pyproject.toml` and used nowhere. CLAUDE.md's architecture diagram claims the new one is in use — doc drift. Backlog #14.
+
+**Other findings**:
+- **Unit confusion in `_combine_small_chunks`** (chunking.py:354-397): `current_chunk_size` is *words* (`len(page_content.split())`), compared against `min_size` (documented as *chars*, default 700); then `combined_size` starts in words but accumulates `len(next_chunk.page_content)` — *chars* — against `max_size`. The merge heuristics work, but not at the thresholds anyone thinks they configured. Needs a deliberate decision + tests. Backlog #15.
+- **Config bypasses** (the pattern from services/ recurs): `VectorStoreConfig.__post_init__` reads `os.getenv("DB_URL")`; `parsing.py` calls `load_dotenv()` at module import (side effect on import!) and `PDFParser` reads `os.environ.get("LLAMAPARSE_API")`. All bypass `config/`. Folded into backlog #7.
+- **Four copies of "find the first H1"**: `URLParser._extract_title`, `PDFParser._extract_title`, `SuttaCentralParser._first_h1`, `MarkdownChunker._extract_title`. Backlog #13.
+- `MarkdownChunker` takes `text` in its constructor — a per-document throwaway object where a stateless service with `chunk(text, title)` would do (CLAUDE.md documents the latter API — drift again).
+- `ingestion/__init__.py` is a *fat facade*: eagerly imports every submodule, so `import ingestion.anything` pays for parsing (dotenv side effect), chunking, embed, and orchestrator. Contrast with `core/`'s lean facade.
+- `asyncio.get_event_loop()` in `_split_oversized_chunks` — deprecated since 3.10 inside running loops; should be `get_running_loop()`. Backlog #16.
+- Batch embedding **fails fast** on batch errors (raises) — CLAUDE.md says "partial failures are logged but don't halt pipeline." The code is arguably right; the doc is wrong either way.
+
+**Notable Python patterns**:
+- **Double-checked locking, three levels deep** (`ThreadSafeEmbeddingsCache`): singleton via `__new__` with a class-level lock; per-model locks so different models can load concurrently while duplicate loads of the *same* model block; a `_locks_lock` guarding the locks dict itself. Genuine concurrency engineering — the lock-free fast path read is safe under the GIL. (Critique: the singleton-via-`__new__` ceremony could be a module-level instance or `@lru_cache` factory — the codebase's own established idiom — but the per-resource locking is the genuinely instructive part.)
+- **Sync-to-async bridging**: `loop.run_in_executor(ThreadPoolExecutor, ...)` + `asyncio.gather(*tasks, return_exceptions=True)`, then per-result `isinstance(result, Exception)` with fallback to the unsplit chunk — parallel semantic splitting with per-chunk graceful degradation, order preserved via an index map.
+- **Resilience-first chunking**: every step has a fallback (header split fails → whole doc as one chunk; semantic split fails → keep original). Data pipeline philosophy: a worse chunk beats a lost document.
+- **Strategy + chain-of-responsibility factory** (`ParserFactory`): ordered `can_parse()` probing; SuttaCentralParser deliberately registered *before* URLParser so `suttacentral.net` URLs route to the API parser instead of fetching an empty SPA shell — order as routing policy, documented in the docstring.
+- **Deprecation done right** (`parsing.py`): `warnings.warn(..., DeprecationWarning, stacklevel=2)` — `stacklevel=2` makes the warning point at the *caller's* line, not the shim.
+- **Constructor-injected I/O** (`suttacentral.py`): `fetch_json: Callable[[str], dict]` — tests inject a dict-returning fake; no `unittest.mock`, no network. The purest seam in the codebase, and the newest code. Pure functions (`bilara_to_html`, `parse_sutta_ref`, `nikaya_tags`) hold the logic; the class is a thin shell around I/O.
+- **Lazy import with stated reason** (`PDFParser.parse`): LlamaParse imported inside the method because the dependency chain is heavy/fragile — the comment says *why*, which is what makes it maintainable.
+
+---
+
 ## Refactor Backlog
 
 Findings logged during review; applied only when Himanshu picks them. Ordered by value.
@@ -207,3 +260,10 @@ Findings logged during review; applied only when Himanshu picks them. Ordered by
 | 7 | Fix config bypass: `services/ingestion_service.py:29` reads `os.getenv` directly | `services/` | Tiny | Preserve the config boundary |
 | 8 | SQLAlchemy 2.0 modernization: `DeclarativeBase` + `Mapped[]`, `select()` over `session.query()`; `default=dict` not `default={}` | `db/schema.py`, `db/crud.py` | Medium | Typed ORM, mypy-checkable, current idiom |
 | 9 | Stale comments: `# file: models.py`, tutorial-style "Step 1/2" comments | `db/schema.py` | Tiny | Readability for public sharing |
+| 10 | Unify exception hierarchies: fold `ingestion/embed.py`'s `VectorStoreError`/`EmbeddingError`/`DatabaseConnectionError` into `core/exceptions.py` (embed's `EmbeddingError` shadows core's — stages' `except EmbeddingError` never catches manager errors) | `ingestion/embed.py`, `core/exceptions.py`, `services/collection_service.py` | Small–Medium | One hierarchy, live catch branches |
+| 11 | *(merged into #7)* Config bypasses: `VectorStoreConfig.__post_init__` os.getenv, `parsing.py` module-level `load_dotenv()`, `PDFParser` env read | `ingestion/` | Small | Single config boundary |
+| 12 | Wire `ChunkingSettings` → chunker `Config` (or delete one): `CHUNKING_*` env vars currently have no effect on the pipeline | `config/settings.py`, `ingestion/chunking.py`, orchestrator | Small–Medium | Config that actually configures |
+| 13 | Dedupe "extract first H1" (4 copies across parsers + chunker) | `ingestion/` | Tiny | One implementation |
+| 14 | Migrate `PGVector` from deprecated `langchain_community` to installed-but-unused `langchain-postgres` | `ingestion/embed.py`, `retrieval/query.py` | Medium | Off deprecated API; matches what CLAUDE.md already claims |
+| 15 | Fix words-vs-chars unit confusion in `_combine_small_chunks` (word counts compared to char thresholds; mixed accumulation) | `ingestion/chunking.py` | Small–Medium | Thresholds mean what config says; needs tests + possibly re-chunking decision |
+| 16 | `asyncio.get_event_loop()` → `asyncio.get_running_loop()` | `ingestion/chunking.py` | Tiny | Deprecated pattern |
