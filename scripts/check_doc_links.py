@@ -27,6 +27,10 @@ def tracked_files() -> set[str]:
 
 
 def main() -> int:
+    root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    os.chdir(root)
     tracked = tracked_files()
     tracked_dirs: set[str] = set()
     for path in tracked:
@@ -47,7 +51,7 @@ def main() -> int:
                 continue
             base = "" if target.startswith("/") else os.path.dirname(md)
             norm = os.path.normpath(os.path.join(base, target.lstrip("/")))
-            if norm not in tracked and norm.rstrip("/") not in tracked_dirs:
+            if norm not in tracked and norm not in tracked_dirs:
                 failures.append(f"{md}: broken or untracked link -> {raw}")
 
     for failure in failures:
