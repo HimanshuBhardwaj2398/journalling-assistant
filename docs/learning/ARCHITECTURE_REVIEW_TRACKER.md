@@ -43,7 +43,7 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
 - [x] `db/`
 - [x] `observability/`
 - [x] `ingestion/`
-- [ ] `retrieval/`
+- [x] `retrieval/`
 - [ ] `services/`
 - [ ] `views/`
 - [ ] `app.py` / root `config.py` (entrypoint)
@@ -88,6 +88,12 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
 - Deferred with reasons: #2 (needs live DB), #8 (dedicated PR), #14 (data-compat plan), #15 (behavioral decision) — see backlog table.
 - Learned along the way: pydantic-settings resolves `AliasChoices` in alias order *across sources* — a `DB_URL` in the dotenv file outranks a `DATABASE_URL` in the real environment. Made the config-boundary tests hermetic (chdir to tmp) rather than dependent on the developer's `.env`.
 - Next: `retrieval/`.
+
+### Session 5 — 2026-07-14
+
+- PR #6 (backlog batch) went green after one CI round-trip: local verification ran `ruff check` but CI also runs `ruff format --check` — two files needed reformatting. Lesson: local verification must mirror CI's exact commands.
+- Completed `retrieval/` (notes below). New backlog items #17–#21.
+- Next: `services/`.
 
 ## Strategic Questions (asked session 2, answered with code evidence)
 
@@ -252,6 +258,31 @@ Filled in as each folder is completed, in review order. Use the Queue above to j
 
 ---
 
+### `retrieval/` — Tier 3
+
+**Files**: `query.py` (461) · `answering.py` (198) · `llm_client.py` (69) · `utils.py` (37)
+
+**What it does**: The RAG query layer. `RetrievalEngine` runs four strategies (similarity / MMR / threshold / hybrid) over the pgvector store; `GroundedAnswerService` synthesizes cited answers via `LLMClient` (a litellm facade); `utils.extract_header_paths` normalizes chunk header metadata across generations of chunker output.
+
+**Abstraction level**: Good layering — engine returns typed `SearchResult`/`SearchResponse`/`SearchTrace` dataclasses, not raw LangChain documents, so `views/` never touches LangChain. `answering.py` is newest-generation quality: injectable client + tracer, explicit context budgets (`max_chunks`, `max_chunk_chars`), and the trace records the *exact* system and user prompts — answers are reproducible after the fact.
+
+**Best-practice notes**:
+1. **The sealed boundary re-opened** — `query.py:139` does `os.getenv("DB_URL") or os.getenv("DATABASE_URL")`; `llm_client.py` reads `LLM_PROVIDER`/`LLM_MODEL`/`OLLAMA_BASE_URL` raw (no `LLMSettings` group exists in config at all); `RetrievalEngine` hardcodes collection + embedding-model defaults instead of using `VectorSettings`/`EmbeddingSettings`. This folder was written in parallel with the boundary work and never migrated. Lesson: **boundaries enforced by vigilance decay; encode them as lint rules** — ruff's `flake8-tidy-imports` banned-api (`TID251`) can ban `os.getenv` outside `config/`. Backlog #17.
+2. **Test-shaped wart in production** — `_all_chunks: None = None  # kept for test assertions; never populated` exists solely so `test_query_fts.py:23` can assert it's None. Production code should not carry members that exist only for tests. Backlog #18.
+3. **Naming drift after implementation swap** — `_bm25_search` is Postgres FTS (`ts_rank`), not BM25; `rank-bm25` remains in pyproject with zero imports. The comment admits the swap; the name and dependency didn't follow. Backlog #20, #21.
+4. **FTS computes `to_tsvector` per row per query** — no generated tsvector column, no GIN index → sequential scan that re-parses every chunk's text on every hybrid search. Fine at hundreds of chunks; not at 100k (the project's stated scale target). Pairs naturally with the #2 migration. Backlog #19.
+5. **Score semantics need an audit** — `SearchResult.score` docstring says "higher = more relevant", but community-PGVector's `similarity_search_with_score` returns *distance* (lower = better), while hybrid returns RRF scores and threshold uses normalized relevance. Three strategies, three different score meanings, one field and one docstring. Classic vector-store trap. Backlog #20.
+6. `llm_client.py` mutates global `litellm.api_base` for ollama — process-wide state; two clients with different providers in one process would fight. Acceptable now, worth a comment.
+
+**Notable Python patterns**:
+- **Dictionary dispatch** — `strategy_map = {RetrievalStrategy.SIMILARITY: self._similarity_search, ...}` then `strategy_map[strategy](...)`: the enum→method table replaces an if/elif chain and makes "add a strategy" a one-line diff.
+- **Weighted Reciprocal Rank Fusion** — clean ~20-line implementation of a real IR algorithm (`score = Σ weight_i/(rrf_k + rank_i)`), with `_doc_key` providing a stable dedup key (uuid, else content SHA-256) so the same chunk arriving via both retrievers merges its scores.
+- **Use the database you already have** — hybrid search's lexical leg is Postgres `ts_rank` instead of an in-memory BM25 index: no index rebuild on every process start, no RAM cost, one fewer dependency. Boring-tech win.
+- **Trace-first design** — every search returns a `SearchTrace` (params, timing, strategy notes, Langfuse ids) and every answer an `AnswerTrace` including full prompts. Observability as part of the return type, not a side channel.
+- **Failure-path telemetry** — `except: observation.update(status failed); raise` — the trace records the failure *and* the exception still propagates. Contrast with swallowing.
+
+---
+
 ## Refactor Backlog
 
 Findings logged during review; applied only when Himanshu picks them. Ordered by value.
@@ -274,3 +305,8 @@ Findings logged during review; applied only when Himanshu picks them. Ordered by
 | 14 | ⏸ **Deferred** — needs a data-compat plan: langchain-postgres uses a different table layout/driver (psycopg3), so existing embeddings must be verified/migrated against a live DB | `ingestion/embed.py`, `retrieval/query.py` | Medium | Off deprecated API |
 | 15 | ⏸ **Deferred** — behavioral decision needed (fixing units changes chunk boundaries for all future ingests, making corpus inconsistent with existing chunks unless re-chunked). Decide: fix + re-ingest, or document words-as-units | `ingestion/chunking.py` | Small–Medium | Thresholds mean what config says |
 | 16 | ✅ **Applied (session 4)** | `ingestion/chunking.py` | Tiny | Deprecated pattern |
+| 17 | Route retrieval config through settings: `RetrievalEngine` db_url/collection/model via `get_settings()`; add `LLMSettings` group (provider, model, ollama URL); consider ruff TID251 ban on `os.getenv` outside `config/` | `retrieval/`, `config/settings.py`, `pyproject.toml` | Small–Medium | Boundaries as lint rules, not vigilance |
+| 18 | Remove test-only `_all_chunks` attribute; fix `tests/retrieval/test_query_fts.py:23` to assert behavior, not internals | `retrieval/query.py` | Tiny | No test-shaped warts in production |
+| 19 | FTS performance: generated `tsvector` column + GIN index on `chunks.chunk_text` (Alembic; pair with #2) | `db/schema.py`, `alembic/` | Small–Medium | Hybrid search at 100k-chunk scale |
+| 20 | Score semantics audit: document/normalize per-strategy score meaning (distance vs relevance vs RRF); rename `_bm25_search` → `_fts_search` | `retrieval/query.py` | Small | One field, one meaning |
+| 21 | Drop `rank-bm25` from pyproject (zero imports, verified) | `pyproject.toml` | Tiny | Dead dependency |
