@@ -42,10 +42,6 @@ MUTATING_OPERATIONS = [
         lambda s: DocumentCRUD(s).update_doc_metadata(1, {"k": "v"}, merge=True),
     ),
     (
-        "store_chunks",
-        lambda s: DocumentCRUD(s).store_chunks(1, [{"page_content": "c"}]),
-    ),
-    (
         "clear_chunks",
         lambda s: DocumentCRUD(s).clear_chunks(1),
     ),

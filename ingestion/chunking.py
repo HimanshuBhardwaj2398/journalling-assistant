@@ -5,7 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from langchain.schema import Document
 from langchain.text_splitter import MarkdownHeaderTextSplitter
@@ -13,6 +13,10 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_experimental.text_splitter import SemanticChunker
 
 from core.exceptions import ChunkingError
+from ingestion.markdown_utils import extract_first_h1
+
+if TYPE_CHECKING:
+    from config.settings import ChunkingSettings
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +32,37 @@ class Config:
     enable_parallel: bool = True
     max_workers: int = 4
     tiny_chunk_threshold: int = 50
-    # model: str = "sentence-transformers/all-MiniLM-L6-v2"
     model: str = "BAAI/bge-small-en-v1.5"
 
     def __post_init__(self):
         if self.max_size <= self.min_size:
             raise ValueError("max_size must be greater than min_size")
+
+    @classmethod
+    def from_settings(
+        cls,
+        chunking: Optional["ChunkingSettings"] = None,
+        model: Optional[str] = None,
+    ) -> "Config":
+        """Build a Config from env-driven settings (CHUNKING_* / EMBEDDING_*).
+
+        This is the bridge that makes the documented environment variables
+        actually reach the chunker; without it callers silently run on the
+        dataclass defaults above.
+        """
+        from config.settings import ChunkingSettings, EmbeddingSettings
+
+        settings = chunking or ChunkingSettings()
+        return cls(
+            max_size=settings.max_size,
+            min_size=settings.min_size,
+            max_header_level=settings.max_header_level,
+            enable_semantic=settings.enable_semantic,
+            enable_parallel=settings.enable_parallel,
+            max_workers=settings.max_workers,
+            tiny_chunk_threshold=settings.tiny_chunk_threshold,
+            model=model or EmbeddingSettings().huggingface_model,
+        )
 
 
 @dataclass
@@ -173,11 +202,7 @@ class MarkdownChunker:
 
     def _extract_title(self) -> str:
         """Extract title from first H1 header."""
-        for line in self.text.split("\n")[:10]:
-            match = re.match(r"^#\s+(.+)$", line.strip())
-            if match:
-                return match.group(1).strip()
-        return "Untitled"
+        return extract_first_h1(self.text, max_lines=10) or "Untitled"
 
     def _extract_headers(self, text: str) -> Dict[str, str]:
         """Extract current header context from text."""
@@ -276,7 +301,7 @@ class MarkdownChunker:
 
         if self.config.enable_parallel and len(oversized_indices) > 1:
             # Process oversized chunks in parallel
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             oversized = [chunks[idx] for idx in oversized_indices]
             with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
                 tasks = [

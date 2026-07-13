@@ -6,7 +6,6 @@ and managing the connection to PostgreSQL with pgvector extension.
 """
 
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +14,16 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_voyageai import VoyageAIEmbeddings
 from psycopg2 import errors as pg_errors
+
+from core.exceptions import DatabaseConnectionError, EmbeddingError, VectorStoreError
+
+__all__ = [
+    "VectorStoreConfig",
+    "VectorStoreManager",
+    "VectorStoreError",
+    "DatabaseConnectionError",
+    "EmbeddingError",
+]
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -31,33 +40,11 @@ class VectorStoreConfig:
     batch_size: int = 100
 
     def __post_init__(self):
-        """Validate configuration after initialization."""
+        """Resolve the database URL from settings when not passed explicitly."""
         if not self.db_url:
-            self.db_url = os.getenv("DB_URL")
+            from config.settings import get_settings
 
-        if not self.db_url:
-            raise ValueError(
-                "Database URL must be provided either via db_url parameter "
-                "or DB_URL environment variable"
-            )
-
-
-class VectorStoreError(Exception):
-    """Base exception for vector store operations."""
-
-    pass
-
-
-class DatabaseConnectionError(VectorStoreError):
-    """Raised when database connection fails."""
-
-    pass
-
-
-class EmbeddingError(VectorStoreError):
-    """Raised when document embedding fails."""
-
-    pass
+            self.db_url = get_settings().database.url
 
 
 class VectorStoreManager:

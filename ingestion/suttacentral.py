@@ -20,6 +20,7 @@ from markdownify import markdownify as md
 
 from core.exceptions import ParsingError
 from core.interfaces import ParseResult
+from ingestion.markdown_utils import extract_first_h1
 
 _SC_URL = re.compile(r"^https?://(www\.)?suttacentral\.net/", re.IGNORECASE)
 _SC_SHORTHAND = re.compile(r"^sc:", re.IGNORECASE)
@@ -235,11 +236,7 @@ class SuttaCentralParser:
     @staticmethod
     def _first_h1(markdown: str) -> Optional[str]:
         """Return the text of the first level-1 markdown heading, if any."""
-        for line in markdown.split("\n")[:40]:
-            match = re.match(r"^#\s+(.+)$", line.strip())
-            if match:
-                return match.group(1).strip()
-        return None
+        return extract_first_h1(markdown, max_lines=40)
 
 
 class SuttaCentralCatalog:

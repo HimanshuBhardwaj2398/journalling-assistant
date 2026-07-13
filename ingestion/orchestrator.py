@@ -23,24 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# SERIALIZATION HELPERS (kept for backward compatibility)
-# ============================================================================
-
-
-def serialize_docs(docs: List[LangchainDocument]) -> List[Dict[str, Any]]:
-    """Converts Langchain Documents to JSON-serializable format."""
-    return [{"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs]
-
-
-def deserialize_docs(serialized_docs: List[Dict[str, Any]]) -> List[LangchainDocument]:
-    """Converts serialized documents back to Langchain Documents."""
-    return [
-        LangchainDocument(page_content=doc["page_content"], metadata=doc["metadata"])
-        for doc in serialized_docs
-    ]
-
-
-# ============================================================================
 # REPROCESS MODES
 # ============================================================================
 
@@ -236,7 +218,7 @@ class IngestionOrchestrator:
             enable_database_persistence: Enable database stage (default True)
         """
         self.vector_store_config = vector_store_config
-        self.chunking_config = chunking_config or ChunkingConfig()
+        self.chunking_config = chunking_config or ChunkingConfig.from_settings()
         self.enable_database_persistence = enable_database_persistence
 
         # Initialize components

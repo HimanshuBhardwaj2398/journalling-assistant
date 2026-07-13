@@ -143,6 +143,35 @@ class SchemaValidationError(DatabaseError):
 
 
 # ============================================================================
+# VECTOR STORE ERRORS
+# ============================================================================
+
+
+class VectorStoreError(MeditationDBError):
+    """
+    Raised when vector store operations fail.
+
+    Examples:
+        - Adding or deleting embeddings fails
+        - Vector store returns inconsistent IDs
+    """
+
+    pass
+
+
+class DatabaseConnectionError(VectorStoreError):
+    """
+    Raised when the vector store's database connection fails.
+
+    Examples:
+        - Invalid connection string
+        - Database unreachable
+    """
+
+    pass
+
+
+# ============================================================================
 # COLLECTION ERRORS
 # ============================================================================
 

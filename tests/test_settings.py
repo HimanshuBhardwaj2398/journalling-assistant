@@ -1,6 +1,24 @@
 """Tests for settings compatibility behaviors."""
 
-from config.settings import DatabaseSettings, Settings
+import pytest
+
+from config.settings import ChunkingSettings, DatabaseSettings, Settings
+
+
+def test_chunking_settings_enforce_max_greater_than_min_when_built_directly():
+    """The invariant must live on ChunkingSettings itself, not only on the parent."""
+    with pytest.raises(ValueError):
+        ChunkingSettings(max_size=100, min_size=200)
+
+
+def test_db_url_native_env_name_still_works(monkeypatch):
+    """Guard for the AliasChoices swap: DB_URL (the prefixed name) must keep working."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DB_URL", "postgresql://u:p@localhost/native")
+
+    settings = DatabaseSettings()
+
+    assert settings.url == "postgresql://u:p@localhost/native"
 
 
 def test_settings_accepts_release_as_debug_false(monkeypatch):

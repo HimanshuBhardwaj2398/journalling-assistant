@@ -6,7 +6,7 @@ All environment variables are loaded and validated here.
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,10 +18,12 @@ class DatabaseSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     url: str = Field(
         default="",
+        validation_alias=AliasChoices("DB_URL", "DATABASE_URL"),
         description="PostgreSQL connection URL (Supabase or local or Neon)",
     )
     pool_size: int = Field(
@@ -42,14 +44,9 @@ class DatabaseSettings(BaseSettings):
     )
     echo: bool = Field(default=False, description="Echo SQL queries (for debugging)")
 
-    @field_validator("url", mode="before")
+    @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
-        """Also check DATABASE_URL for backward compatibility."""
-        import os
-
-        if not v:
-            v = os.getenv("DATABASE_URL", "")
         if not v:
             raise ValueError(
                 "Database URL must be set via DB_URL or DATABASE_URL environment variable"
@@ -78,10 +75,12 @@ class EmbeddingSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     voyage_api_key: Optional[str] = Field(
         default=None,
+        validation_alias=AliasChoices("EMBEDDING_VOYAGE_API_KEY", "VOYAGE_API_KEY"),
         description="Voyage AI API key for embeddings",
     )
     voyage_model: str = Field(
@@ -97,17 +96,6 @@ class EmbeddingSettings(BaseSettings):
         description="Batch size for embedding operations",
     )
 
-    @field_validator("voyage_api_key", mode="before")
-    @classmethod
-    def validate_voyage_key(cls, v: Optional[str]) -> Optional[str]:
-        """Also check VOYAGE_API_KEY for backward compatibility."""
-        import os
-
-        if not v:
-            v = os.getenv("VOYAGE_API_KEY")
-        return v
-
-
 class ParsingSettings(BaseSettings):
     """Document parsing configuration."""
 
@@ -116,26 +104,18 @@ class ParsingSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     llamaparse_api_key: Optional[str] = Field(
         default=None,
+        validation_alias=AliasChoices("PARSING_LLAMAPARSE_API_KEY", "LLAMAPARSE_API"),
         description="LlamaParse API key for PDF parsing",
     )
     high_res_ocr: bool = Field(
         default=True,
         description="Enable high resolution OCR for PDFs",
     )
-
-    @field_validator("llamaparse_api_key", mode="before")
-    @classmethod
-    def validate_llamaparse_key(cls, v: Optional[str]) -> Optional[str]:
-        """Also check LLAMAPARSE_API for backward compatibility."""
-        import os
-
-        if not v:
-            v = os.getenv("LLAMAPARSE_API")
-        return v
 
 
 class ChunkingSettings(BaseSettings):
@@ -156,13 +136,13 @@ class ChunkingSettings(BaseSettings):
     max_workers: int = Field(default=4, description="Max worker threads for parallel processing")
     tiny_chunk_threshold: int = Field(default=50, description="Threshold for tiny chunks to merge")
 
-    @field_validator("max_size", mode="after")
-    @classmethod
-    def validate_max_size(cls, v: int, info) -> int:
-        """Ensure max_size > min_size."""
-        # We can't access other fields directly in field_validator
-        # This will be validated in Settings.__init__
-        return v
+    def model_post_init(self, __context) -> None:
+        """Cross-field invariant, enforced where the fields live."""
+        if self.max_size <= self.min_size:
+            raise ValueError(
+                f"chunking max_size ({self.max_size}) must be greater than "
+                f"min_size ({self.min_size})"
+            )
 
 
 class LangfuseSettings(BaseSettings):
@@ -243,16 +223,6 @@ class Settings(BaseSettings):
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     vector: VectorSettings = Field(default_factory=VectorSettings)
 
-    @field_validator("hf_token", mode="before")
-    @classmethod
-    def validate_hf_token(cls, v: Optional[str]) -> Optional[str]:
-        """Also check HF_TOKEN for backward compatibility."""
-        import os
-
-        if not v:
-            v = os.getenv("HF_TOKEN")
-        return v
-
     @field_validator("debug", mode="before")
     @classmethod
     def validate_debug(cls, v):
@@ -265,14 +235,6 @@ class Settings(BaseSettings):
                 return True
         return v
 
-    def model_post_init(self, __context) -> None:
-        """Validate settings after initialization."""
-        if self.chunking.max_size <= self.chunking.min_size:
-            raise ValueError(
-                f"chunking.max_size ({self.chunking.max_size}) must be greater than "
-                f"chunking.min_size ({self.chunking.min_size})"
-            )
-
 
 @lru_cache()
 def get_settings() -> Settings:
@@ -281,21 +243,3 @@ def get_settings() -> Settings:
     Uses lru_cache to ensure settings are only loaded once.
     """
     return Settings()
-
-
-# Backward compatibility: expose commonly used settings as module-level variables
-# These will be lazily loaded when accessed
-def _get_db_url() -> str:
-    return get_settings().database.url
-
-
-def _get_voyage_api_key() -> Optional[str]:
-    return get_settings().embedding.voyage_api_key
-
-
-def _get_llamaparse_api() -> Optional[str]:
-    return get_settings().parsing.llamaparse_api_key
-
-
-def _get_hf_token() -> Optional[str]:
-    return get_settings().hf_token

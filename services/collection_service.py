@@ -11,11 +11,11 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from core.exceptions import CollectionError, DocumentNotFoundError
+from core.exceptions import CollectionError, DocumentNotFoundError, VectorStoreError
 from db.crud import ChunkCRUD, DocumentCRUD, get_all_collections
 from db.database import session_scope
 from db.schema import DocumentStatus
-from ingestion.embed import VectorStoreConfig, VectorStoreError, VectorStoreManager
+from ingestion.embed import VectorStoreConfig, VectorStoreManager
 from ingestion.orchestrator import IngestionOrchestrator
 
 logger = logging.getLogger(__name__)

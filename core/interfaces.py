@@ -173,21 +173,6 @@ class PipelineContext:
 
         return self.with_update(stage_results=new_results, error_messages=new_errors)
 
-    def mark_stage_running(self, stage_name: str) -> "PipelineContext":
-        """
-        Mark a stage as currently running.
-
-        Args:
-            stage_name: Name of the running stage
-
-        Returns:
-            New context with updated stage status
-        """
-        new_results = self.stage_results.copy()
-        new_results[stage_name] = StageStatus.RUNNING
-        return self.with_update(stage_results=new_results)
-
-
 class PipelineStage(ABC):
     """
     Abstract base class for pipeline stages.

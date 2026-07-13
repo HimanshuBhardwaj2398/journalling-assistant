@@ -7,14 +7,19 @@ used throughout the application.
 
 from .exceptions import (
     ChunkingError,
+    CollectionError,
     ConfigurationError,
+    DatabaseConnectionError,
     DatabaseError,
     DocumentNotFoundError,
+    DuplicateDocumentError,
     EmbeddingError,
+    EmbeddingSyncError,
     MeditationDBError,
     ParsingError,
     PipelineError,
     SchemaValidationError,
+    VectorStoreError,
 )
 from .interfaces import (
     Parser,
@@ -34,7 +39,12 @@ __all__ = [
     "EmbeddingError",
     "DatabaseError",
     "DocumentNotFoundError",
+    "DuplicateDocumentError",
     "SchemaValidationError",
+    "VectorStoreError",
+    "DatabaseConnectionError",
+    "CollectionError",
+    "EmbeddingSyncError",
     # Interfaces
     "ParseResult",
     "Parser",
