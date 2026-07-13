@@ -43,7 +43,7 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
 - [x] `db/`
 - [x] `observability/`
 - [x] `ingestion/`
-- [ ] `retrieval/`
+- [x] `retrieval/`
 - [ ] `services/`
 - [ ] `views/`
 - [ ] `app.py` / root `config.py` (entrypoint)
@@ -81,6 +81,19 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
 - Committed on branch `refactor/state-ownership`; rebased onto main (PR #4 was squash-merged, so the branch was replayed onto `origin/main` to keep the diff clean); **PR #5 opened**: https://github.com/HimanshuBhardwaj2398/meditation-assistant/pull/5
 - Completed `observability/` and the rest of `ingestion/` (notes below). Three verified findings: CHUNKING_* env settings never reach the chunker; two distinct `EmbeddingError` classes make a `catch` branch dead; deprecated `langchain_community` PGVector used while `langchain-postgres` is installed but unused. Backlog #10–#16 added.
 - Next: `retrieval/`.
+
+### Session 4 — 2026-07-13 (later)
+
+- **Backlog batch applied via TDD** on fresh branch `chore/backlog-cleanup` (main pulled first; PR #5 had been merged): items #4, #5, #6, #7/#11, #9, #10, #12, #13, #16. 16 new tests (RED verified first), 128 total passing, ruff clean, mypy 71 vs 72 at baseline.
+- Deferred with reasons: #2 (needs live DB), #8 (dedicated PR), #14 (data-compat plan), #15 (behavioral decision) — see backlog table.
+- Learned along the way: pydantic-settings resolves `AliasChoices` in alias order *across sources* — a `DB_URL` in the dotenv file outranks a `DATABASE_URL` in the real environment. Made the config-boundary tests hermetic (chdir to tmp) rather than dependent on the developer's `.env`.
+- Next: `retrieval/`.
+
+### Session 5 — 2026-07-14
+
+- PR #6 (backlog batch) went green after one CI round-trip: local verification ran `ruff check` but CI also runs `ruff format --check` — two files needed reformatting. Lesson: local verification must mirror CI's exact commands.
+- Completed `retrieval/` (notes below). New backlog items #17–#21.
+- Next: `services/`.
 
 ## Strategic Questions (asked session 2, answered with code evidence)
 
@@ -245,6 +258,31 @@ Filled in as each folder is completed, in review order. Use the Queue above to j
 
 ---
 
+### `retrieval/` — Tier 3
+
+**Files**: `query.py` (461) · `answering.py` (198) · `llm_client.py` (69) · `utils.py` (37)
+
+**What it does**: The RAG query layer. `RetrievalEngine` runs four strategies (similarity / MMR / threshold / hybrid) over the pgvector store; `GroundedAnswerService` synthesizes cited answers via `LLMClient` (a litellm facade); `utils.extract_header_paths` normalizes chunk header metadata across generations of chunker output.
+
+**Abstraction level**: Good layering — engine returns typed `SearchResult`/`SearchResponse`/`SearchTrace` dataclasses, not raw LangChain documents, so `views/` never touches LangChain. `answering.py` is newest-generation quality: injectable client + tracer, explicit context budgets (`max_chunks`, `max_chunk_chars`), and the trace records the *exact* system and user prompts — answers are reproducible after the fact.
+
+**Best-practice notes**:
+1. **The sealed boundary re-opened** — `query.py:139` does `os.getenv("DB_URL") or os.getenv("DATABASE_URL")`; `llm_client.py` reads `LLM_PROVIDER`/`LLM_MODEL`/`OLLAMA_BASE_URL` raw (no `LLMSettings` group exists in config at all); `RetrievalEngine` hardcodes collection + embedding-model defaults instead of using `VectorSettings`/`EmbeddingSettings`. This folder was written in parallel with the boundary work and never migrated. Lesson: **boundaries enforced by vigilance decay; encode them as lint rules** — ruff's `flake8-tidy-imports` banned-api (`TID251`) can ban `os.getenv` outside `config/`. Backlog #17.
+2. **Test-shaped wart in production** — `_all_chunks: None = None  # kept for test assertions; never populated` exists solely so `test_query_fts.py:23` can assert it's None. Production code should not carry members that exist only for tests. Backlog #18.
+3. **Naming drift after implementation swap** — `_bm25_search` is Postgres FTS (`ts_rank`), not BM25; `rank-bm25` remains in pyproject with zero imports. The comment admits the swap; the name and dependency didn't follow. Backlog #20, #21.
+4. **FTS computes `to_tsvector` per row per query** — no generated tsvector column, no GIN index → sequential scan that re-parses every chunk's text on every hybrid search. Fine at hundreds of chunks; not at 100k (the project's stated scale target). Pairs naturally with the #2 migration. Backlog #19.
+5. **Score semantics need an audit** — `SearchResult.score` docstring says "higher = more relevant", but community-PGVector's `similarity_search_with_score` returns *distance* (lower = better), while hybrid returns RRF scores and threshold uses normalized relevance. Three strategies, three different score meanings, one field and one docstring. Classic vector-store trap. Backlog #20.
+6. `llm_client.py` mutates global `litellm.api_base` for ollama — process-wide state; two clients with different providers in one process would fight. Acceptable now, worth a comment.
+
+**Notable Python patterns**:
+- **Dictionary dispatch** — `strategy_map = {RetrievalStrategy.SIMILARITY: self._similarity_search, ...}` then `strategy_map[strategy](...)`: the enum→method table replaces an if/elif chain and makes "add a strategy" a one-line diff.
+- **Weighted Reciprocal Rank Fusion** — clean ~20-line implementation of a real IR algorithm (`score = Σ weight_i/(rrf_k + rank_i)`), with `_doc_key` providing a stable dedup key (uuid, else content SHA-256) so the same chunk arriving via both retrievers merges its scores.
+- **Use the database you already have** — hybrid search's lexical leg is Postgres `ts_rank` instead of an in-memory BM25 index: no index rebuild on every process start, no RAM cost, one fewer dependency. Boring-tech win.
+- **Trace-first design** — every search returns a `SearchTrace` (params, timing, strategy notes, Langfuse ids) and every answer an `AnswerTrace` including full prompts. Observability as part of the return type, not a side channel.
+- **Failure-path telemetry** — `except: observation.update(status failed); raise` — the trace records the failure *and* the exception still propagates. Contrast with swallowing.
+
+---
+
 ## Refactor Backlog
 
 Findings logged during review; applied only when Himanshu picks them. Ordered by value.
@@ -252,18 +290,23 @@ Findings logged during review; applied only when Himanshu picks them. Ordered by
 | # | Refactor | Where | Effort | Why |
 |---|----------|-------|--------|-----|
 | 1 | ✅ **Applied (session 3)** — commit ownership moved out of CRUD (`flush()` only; `session_scope` owns the commit); call-site audit confirmed all usage already inside scopes; redundant interior `session.commit()` calls removed from `ParsingStage`/orchestrator | `db/crud.py`, `ingestion/stages.py`, `ingestion/orchestrator.py` | Medium | Restores real transactions; prerequisite for atomic enrichment. Contract test: `tests/test_crud_transaction_ownership.py` |
-| 2 | Unique constraint + index on `documents.file_path` (Alembic migration) | `db/schema.py`, `alembic/` | Small | Dup guard currently advisory + unindexed |
+| 2 | ⏸ **Deferred** — needs a live DB session: dedup-check existing rows first, then Alembic migration | `db/schema.py`, `alembic/` | Small | Dup guard currently advisory + unindexed |
 | 3 | ✅ **Applied (session 3)** — `PipelineContext` is `frozen=True`; `EmbeddingStage` enriches copies instead of mutating shared chunks | `core/interfaces.py`, `ingestion/stages.py` | Small–Medium | Immutability promise now enforced. Contract test: `tests/test_pipeline_context_immutability.py` |
-| 4 | Delete dead code: `_get_*` helpers in settings.py, vestigial `validate_max_size`, likely-unused `store_chunks`/`clear_chunks` + `Document.chunks` column, `mark_stage_running` | `config/`, `db/`, `core/` | Small | Less to read for future public sharing |
-| 5 | Complete `core/__init__.py` exports (3 missing exceptions) | `core/__init__.py` | Tiny | One consistent import door |
-| 6 | Move `max_size > min_size` check onto `ChunkingSettings.model_post_init`; env aliases via `AliasChoices` | `config/settings.py` | Small | Invariants live with their data |
-| 7 | Fix config bypass: `services/ingestion_service.py:29` reads `os.getenv` directly | `services/` | Tiny | Preserve the config boundary |
-| 8 | SQLAlchemy 2.0 modernization: `DeclarativeBase` + `Mapped[]`, `select()` over `session.query()`; `default=dict` not `default={}` | `db/schema.py`, `db/crud.py` | Medium | Typed ORM, mypy-checkable, current idiom |
-| 9 | Stale comments: `# file: models.py`, tutorial-style "Step 1/2" comments | `db/schema.py` | Tiny | Readability for public sharing |
-| 10 | Unify exception hierarchies: fold `ingestion/embed.py`'s `VectorStoreError`/`EmbeddingError`/`DatabaseConnectionError` into `core/exceptions.py` (embed's `EmbeddingError` shadows core's — stages' `except EmbeddingError` never catches manager errors) | `ingestion/embed.py`, `core/exceptions.py`, `services/collection_service.py` | Small–Medium | One hierarchy, live catch branches |
-| 11 | *(merged into #7)* Config bypasses: `VectorStoreConfig.__post_init__` os.getenv, `parsing.py` module-level `load_dotenv()`, `PDFParser` env read | `ingestion/` | Small | Single config boundary |
-| 12 | Wire `ChunkingSettings` → chunker `Config` (or delete one): `CHUNKING_*` env vars currently have no effect on the pipeline | `config/settings.py`, `ingestion/chunking.py`, orchestrator | Small–Medium | Config that actually configures |
-| 13 | Dedupe "extract first H1" (4 copies across parsers + chunker) | `ingestion/` | Tiny | One implementation |
-| 14 | Migrate `PGVector` from deprecated `langchain_community` to installed-but-unused `langchain-postgres` | `ingestion/embed.py`, `retrieval/query.py` | Medium | Off deprecated API; matches what CLAUDE.md already claims |
-| 15 | Fix words-vs-chars unit confusion in `_combine_small_chunks` (word counts compared to char thresholds; mixed accumulation) | `ingestion/chunking.py` | Small–Medium | Thresholds mean what config says; needs tests + possibly re-chunking decision |
-| 16 | `asyncio.get_event_loop()` → `asyncio.get_running_loop()` | `ingestion/chunking.py` | Tiny | Deprecated pattern |
+| 4 | ✅ **Applied (session 4)** — deleted `_get_*` helpers, vestigial `validate_max_size`, `store_chunks`, `serialize_docs`/`deserialize_docs`, `mark_stage_running` (all zero-call-site verified). Kept `clear_chunks` (live) and the `Document.chunks` column (needs a migration to drop) | `config/`, `db/`, `core/`, `ingestion/` | Small | Less to read for future public sharing |
+| 5 | ✅ **Applied (session 4)** — facade now exports the full hierarchy incl. new `VectorStoreError`/`DatabaseConnectionError`. Test: `tests/test_core_exports.py` | `core/__init__.py` | Tiny | One consistent import door |
+| 6 | ✅ **Applied (session 4)** — invariant on `ChunkingSettings.model_post_init`; all four env-var fallback validators replaced with `AliasChoices` + `populate_by_name=True`. Note learned: alias order IS precedence order, and dotenv values participate (DB_URL in .env beats DATABASE_URL in the environment) | `config/settings.py` | Small | Invariants live with their data |
+| 7 | ✅ **Applied (session 4, with #11)** — removed raw env reads from `services/ingestion_service.py`, `VectorStoreConfig.__post_init__`, `PDFParser`; deleted `parsing.py`'s module-level `load_dotenv()` side effect. Tests: `tests/test_config_boundary.py` (hermetic via chdir to tmp) | `services/`, `ingestion/` | Small | config/ is the only env boundary |
+| 8 | ⏸ **Deferred** (partially: `default=dict` done in #9) — `DeclarativeBase` + `Mapped[]` migration is a dedicated PR; will eliminate most of the 71 remaining mypy errors | `db/schema.py`, `db/crud.py` | Medium | Typed ORM, mypy-checkable, current idiom |
+| 9 | ✅ **Applied (session 4)** — stale comments removed; also `default={}`/`default=[]` → `default=dict`/`default=list` on columns | `db/schema.py` | Tiny | Readability for public sharing |
+| 10 | ✅ **Applied (session 4)** — embed's local hierarchy deleted; `VectorStoreError`/`DatabaseConnectionError` now live in core, `EmbeddingError` is one class. The stage's specific except branch is provably live: `tests/test_exception_unification.py` asserts manager errors are recorded verbatim (no 'Unexpected error:' prefix) | `ingestion/embed.py`, `core/exceptions.py` | Small–Medium | One hierarchy, live catch branches |
+| 11 | ✅ **Applied (session 4, as part of #7)** | `ingestion/` | Small | Single config boundary |
+| 12 | ✅ **Applied (session 4)** — `Config.from_settings()` bridges `CHUNKING_*`/`EMBEDDING_HUGGINGFACE_MODEL` into the chunker; orchestrator defaults to it. Tests: `tests/ingestion/test_chunking_config.py` | `ingestion/chunking.py`, orchestrator | Small–Medium | Config that actually configures |
+| 13 | ✅ **Applied (session 4)** — `ingestion/markdown_utils.py:extract_first_h1()`, all 4 call sites converted. Tests: `tests/ingestion/test_markdown_utils.py` | `ingestion/` | Tiny | One implementation |
+| 14 | ⏸ **Deferred** — needs a data-compat plan: langchain-postgres uses a different table layout/driver (psycopg3), so existing embeddings must be verified/migrated against a live DB | `ingestion/embed.py`, `retrieval/query.py` | Medium | Off deprecated API |
+| 15 | ⏸ **Deferred** — behavioral decision needed (fixing units changes chunk boundaries for all future ingests, making corpus inconsistent with existing chunks unless re-chunked). Decide: fix + re-ingest, or document words-as-units | `ingestion/chunking.py` | Small–Medium | Thresholds mean what config says |
+| 16 | ✅ **Applied (session 4)** | `ingestion/chunking.py` | Tiny | Deprecated pattern |
+| 17 | Route retrieval config through settings: `RetrievalEngine` db_url/collection/model via `get_settings()`; add `LLMSettings` group (provider, model, ollama URL); consider ruff TID251 ban on `os.getenv` outside `config/` | `retrieval/`, `config/settings.py`, `pyproject.toml` | Small–Medium | Boundaries as lint rules, not vigilance |
+| 18 | Remove test-only `_all_chunks` attribute; fix `tests/retrieval/test_query_fts.py:23` to assert behavior, not internals | `retrieval/query.py` | Tiny | No test-shaped warts in production |
+| 19 | FTS performance: generated `tsvector` column + GIN index on `chunks.chunk_text` (Alembic; pair with #2) | `db/schema.py`, `alembic/` | Small–Medium | Hybrid search at 100k-chunk scale |
+| 20 | Score semantics audit: document/normalize per-strategy score meaning (distance vs relevance vs RRF); rename `_bm25_search` → `_fts_search` | `retrieval/query.py` | Small | One field, one meaning |
+| 21 | Drop `rank-bm25` from pyproject (zero imports, verified) | `pyproject.toml` | Tiny | Dead dependency |

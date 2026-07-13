@@ -15,12 +15,7 @@ from .chunking import MarkdownChunker, ThreadSafeEmbeddingsCache
 from .embed import VectorStoreConfig, VectorStoreManager
 
 # Orchestration
-from .orchestrator import (
-    IngestionOrchestrator,
-    PipelineOrchestrator,
-    deserialize_docs,
-    serialize_docs,
-)
+from .orchestrator import IngestionOrchestrator, PipelineOrchestrator
 
 # ============================================================================
 # NEW API EXPORTS (Sprint 2 refactoring)
@@ -57,8 +52,6 @@ __all__ = [
     "ThreadSafeEmbeddingsCache",
     # Orchestration
     "PipelineOrchestrator",
-    "serialize_docs",
-    "deserialize_docs",
     # Pipeline Stages
     "ParsingStage",
     "ChunkingStage",

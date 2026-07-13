@@ -1,9 +1,9 @@
-# file: models.py
+"""ORM models for documents and chunks (see db/crud.py for operations)."""
 
-import enum  # For Enum type
+import enum
 
 from sqlalchemy import (
-    BigInteger,  # Use BigInteger to match PostgreSQL's BIGSERIAL
+    BigInteger,
     Column,
     DateTime,
     Enum,
@@ -11,19 +11,11 @@ from sqlalchemy import (
     Integer,
     Text,
 )
-
-# Import PostgreSQL-specific types
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.sql import func  # To use SQL functions like NOW()
+from sqlalchemy.sql import func
 
-# --- Step 1: Set up the Base Class ---
-# All our ORM models will inherit from this class.
 Base = declarative_base()
-
-
-# --- Step 2: Define the Document Class ---
-# This class maps to the 'documents' table in PostgreSQL.
 
 
 class DocumentStatus(enum.Enum):
@@ -54,8 +46,8 @@ class Document(Base):
     markdown = Column(Text, nullable=True)
 
     # Metadata
-    doc_metadata = Column(JSONB, nullable=True, default={})
-    tags = Column(ARRAY(Text), nullable=True, default=[])
+    doc_metadata = Column(JSONB, nullable=True, default=dict)
+    tags = Column(ARRAY(Text), nullable=True, default=list)
 
     # Pipeline Status
     status = Column(
@@ -140,7 +132,7 @@ class Chunk(Base):
     chunk_metadata = Column(
         JSONB,
         nullable=True,
-        default={},
+        default=dict,
         comment="Header hierarchy, semantic boundaries, etc.",
     )
 

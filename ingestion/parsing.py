@@ -12,18 +12,15 @@ import warnings
 from typing import Optional
 
 import requests
-from dotenv import load_dotenv
 from markdownify import markdownify as md
 
+from config.settings import get_settings
 from core.exceptions import ConfigurationError, ParsingError
 from core.interfaces import Parser, ParseResult
+from ingestion.markdown_utils import extract_first_h1
 from ingestion.suttacentral import SuttaCentralParser
 
 logger = logging.getLogger(__name__)
-
-# Load environment variables from the project's .env file
-dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-load_dotenv(dotenv_path=dotenv_path)
 
 
 # ============================================================================
@@ -87,11 +84,7 @@ class URLParser:
 
     def _extract_title(self, markdown: str) -> Optional[str]:
         """Extract title from first H1 header."""
-        for line in markdown.split("\n")[:20]:
-            match = re.match(r"^#\s+(.+)$", line.strip())
-            if match:
-                return match.group(1).strip()
-        return None
+        return extract_first_h1(markdown, max_lines=20)
 
 
 class PDFParser:
@@ -102,12 +95,13 @@ class PDFParser:
         Initialize PDF parser with LlamaParse API key.
 
         Args:
-            api_key: LlamaParse API key (defaults to env var LLAMAPARSE_API)
+            api_key: LlamaParse API key (defaults to parsing settings /
+                LLAMAPARSE_API environment variable)
 
         Raises:
-            ConfigurationError: If API key is not provided or found in environment
+            ConfigurationError: If API key is not provided or found in settings
         """
-        self.api_key = api_key or os.environ.get("LLAMAPARSE_API")
+        self.api_key = api_key or get_settings().parsing.llamaparse_api_key
         if not self.api_key:
             raise ConfigurationError(
                 "LLAMAPARSE_API key required for PDF parsing. "
@@ -172,11 +166,7 @@ class PDFParser:
 
     def _extract_title(self, markdown: str) -> Optional[str]:
         """Extract title from first H1 header."""
-        for line in markdown.split("\n")[:20]:
-            match = re.match(r"^#\s+(.+)$", line.strip())
-            if match:
-                return match.group(1).strip()
-        return None
+        return extract_first_h1(markdown, max_lines=20)
 
 
 # ============================================================================

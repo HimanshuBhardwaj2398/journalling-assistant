@@ -5,7 +5,6 @@ Handles document ingestion, processing, and orchestration.
 """
 
 import asyncio
-import os
 from typing import Callable, Optional
 
 from core.exceptions import DuplicateDocumentError
@@ -26,12 +25,8 @@ def get_orchestrator(collection_name: str = "buddhist_texts") -> IngestionOrches
     Returns:
         Configured IngestionOrchestrator instance
     """
-    db_url = os.getenv("DB_URL") or os.getenv("DATABASE_URL")
     return IngestionOrchestrator(
-        vector_store_config=VectorStoreConfig(
-            collection_name=collection_name,
-            db_url=db_url,
-        )
+        vector_store_config=VectorStoreConfig(collection_name=collection_name)
     )
 
 

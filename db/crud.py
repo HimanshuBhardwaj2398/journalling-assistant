@@ -163,30 +163,6 @@ class DocumentCRUD:
             self.db.flush()
         return doc
 
-    def store_chunks(
-        self,
-        document_id: int,
-        chunks: List[Dict[str, Any]],
-    ) -> Optional[schema.Document]:
-        """
-        Store serialized chunks temporarily in document.
-
-        This is temporary storage before embedding. After successful
-        embedding, call clear_chunks() to free up space.
-
-        Args:
-            document_id: ID of document
-            chunks: List of serialized LangChain Documents
-
-        Returns:
-            Updated document or None if not found
-        """
-        doc = self.get_document_by_id(document_id)
-        if doc:
-            doc.chunks = chunks
-            self.db.flush()
-        return doc
-
     def clear_chunks(
         self,
         document_id: int,
