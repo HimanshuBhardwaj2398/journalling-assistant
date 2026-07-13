@@ -96,6 +96,7 @@ class EmbeddingSettings(BaseSettings):
         description="Batch size for embedding operations",
     )
 
+
 class ParsingSettings(BaseSettings):
     """Document parsing configuration."""
 

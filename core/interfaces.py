@@ -173,6 +173,7 @@ class PipelineContext:
 
         return self.with_update(stage_results=new_results, error_messages=new_errors)
 
+
 class PipelineStage(ABC):
     """
     Abstract base class for pipeline stages.
