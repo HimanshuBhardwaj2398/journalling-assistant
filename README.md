@@ -130,7 +130,7 @@ also accepts arbitrary PDFs and web pages for other contemplative literature.
 
 ```bash
 poetry run pre-commit install     # one-time: lint/format hooks
-poetry run pytest --cov           # 18 test modules
+poetry run pytest --cov           # 23 test modules
 poetry run ruff check . && poetry run mypy .
 poetry run python scripts/check_doc_links.py   # docs link integrity
 ```
