@@ -5,9 +5,8 @@
 A RAG knowledge base over the Pali Canon. Ingests Buddhist scripture from
 SuttaCentral's API (plus PDFs and web pages), chunks it along semantic
 boundaries, embeds it into PostgreSQL + pgvector, and serves grounded,
-citation-backed answers through retrieval strategies that are **benchmarked,
-not guessed** — an LLM-as-judge evaluation harness compares four strategies
-against the corpus before any of them reaches the query path.
+citation-backed answers. Retrieval is **benchmarked, not guessed** — an
+LLM-as-judge evaluation compares four strategies against the corpus.
 
 ![Streamlit UI](docs/images/streamlit-ui.png)
 
