@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
@@ -127,6 +128,7 @@ class LangfuseTracer:
     ) -> None:
         self._settings = settings or get_settings().langfuse
         self._client = client if client is not None else self._build_client()
+        self._local = threading.local()  # per-thread span depth for root-only flush
 
     @property
     def enabled(self) -> bool:
@@ -140,23 +142,30 @@ class LangfuseTracer:
         name: str,
         input: Any = None,
         metadata: Optional[dict[str, Any]] = None,
+        as_type: Optional[str] = None,
     ) -> Iterator[LangfuseObservationHandle]:
-        """Create an observation context if Langfuse is configured."""
+        """Create an observation context if Langfuse is configured.
+
+        Nested calls become child spans automatically (OTel context propagation).
+        `as_type="generation"` marks LLM calls so Langfuse tracks model/usage/cost.
+        Only the outermost observation flushes, so per-stage spans stay cheap.
+        """
         if self._client is None:
             yield LangfuseObservationHandle(enabled=False)
             return
 
+        start_kwargs: dict[str, Any] = {"name": name, "input": input, "metadata": metadata}
+        if as_type is not None:
+            start_kwargs["as_type"] = as_type
         try:
-            observation_context = self._client.start_as_current_observation(
-                name=name,
-                input=input,
-                metadata=metadata,
-            )
+            observation_context = self._client.start_as_current_observation(**start_kwargs)
         except Exception as exc:  # pragma: no cover - defensive logging path
             logger.warning("Could not start Langfuse observation '%s': %s", name, exc)
             yield LangfuseObservationHandle(enabled=False)
             return
 
+        depth = getattr(self._local, "depth", 0)
+        self._local.depth = depth + 1
         try:
             with observation_context as observation:
                 handle = LangfuseObservationHandle(
@@ -167,7 +176,9 @@ class LangfuseTracer:
                 handle._refresh_trace_link()
                 yield handle
         finally:
-            self.flush()
+            self._local.depth = depth
+            if depth == 0:
+                self.flush()
 
     def sync_dataset(
         self,
