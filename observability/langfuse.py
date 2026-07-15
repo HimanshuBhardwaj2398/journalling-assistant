@@ -6,11 +6,21 @@ import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, Sequence
 
 from config.settings import LangfuseSettings, get_settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DatasetItemSpec:
+    """SDK-free description of one hosted dataset item (upserted by id)."""
+
+    id: str
+    input: Any
+    expected_output: Any = None
+    metadata: Any = None
 
 
 @dataclass
@@ -148,6 +158,41 @@ class LangfuseTracer:
                 yield handle
         finally:
             self.flush()
+
+    def sync_dataset(
+        self,
+        *,
+        name: str,
+        items: Sequence[DatasetItemSpec],
+        description: Optional[str] = None,
+    ) -> Optional[int]:
+        """Upsert a hosted dataset from item specs. Returns items synced, None when disabled.
+
+        Items upsert by id, so re-syncing after local edits is idempotent. Per-item
+        failures are logged and skipped — a partial sync is repairable by re-running.
+        """
+        if self._client is None:
+            return None
+
+        try:
+            self._client.create_dataset(name=name, description=description)
+        except Exception as exc:  # dataset may already exist — items are the real work
+            logger.info("create_dataset(%s): %s", name, exc)
+
+        synced = 0
+        for item in items:
+            try:
+                self._client.create_dataset_item(
+                    dataset_name=name,
+                    id=item.id,
+                    input=item.input,
+                    expected_output=item.expected_output,
+                    metadata=item.metadata,
+                )
+                synced += 1
+            except Exception as exc:
+                logger.warning("dataset item %s failed to sync: %s", item.id, exc)
+        return synced
 
     def flush(self) -> None:
         """Flush buffered traces if the client supports it."""
