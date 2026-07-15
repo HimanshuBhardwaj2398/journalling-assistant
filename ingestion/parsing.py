@@ -14,7 +14,7 @@ from typing import Optional
 import requests
 from markdownify import markdownify as md
 
-from config.settings import get_settings
+from config.settings import ParsingSettings
 from core.exceptions import ConfigurationError, ParsingError
 from core.interfaces import Parser, ParseResult
 from ingestion.markdown_utils import extract_first_h1
@@ -101,7 +101,7 @@ class PDFParser:
         Raises:
             ConfigurationError: If API key is not provided or found in settings
         """
-        self.api_key = api_key or get_settings().parsing.llamaparse_api_key
+        self.api_key = api_key or ParsingSettings().llamaparse_api_key
         if not self.api_key:
             raise ConfigurationError(
                 "LLAMAPARSE_API key required for PDF parsing. "

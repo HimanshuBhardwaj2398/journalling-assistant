@@ -2,7 +2,33 @@
 
 import pytest
 
-from config.settings import ChunkingSettings, DatabaseSettings, Settings
+from config.settings import ChunkingSettings, DatabaseSettings, LLMSettings, Settings
+
+
+def test_llm_settings_defaults(monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+
+    settings = LLMSettings()
+
+    assert settings.provider == "groq"
+    assert settings.model is None
+    assert settings.ollama_base_url == "http://localhost:11434"
+
+
+def test_llm_settings_reject_unknown_provider(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "bogus_provider")
+
+    with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
+        LLMSettings()
+
+
+def test_llm_settings_ollama_url_legacy_alias(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11434")
+
+    settings = LLMSettings()
+
+    assert settings.ollama_base_url == "http://gpu-box:11434"
 
 
 def test_chunking_settings_enforce_max_greater_than_min_when_built_directly():

@@ -378,7 +378,9 @@ class MarkdownChunker:
 
         while chunk_index < len(chunks):
             current_chunk = chunks[chunk_index]
-            current_chunk_size = len(current_chunk.page_content.split())
+            # All size thresholds (tiny/min/max) are in characters, matching
+            # the config docs; accumulation below also counts characters.
+            current_chunk_size = len(current_chunk.page_content)
 
             # If a chunk is tiny, merge with next chunk.
             if current_chunk_size < tiny_chunk_threshold and (chunk_index + 1) < len(chunks):
