@@ -49,6 +49,14 @@ def test_doc_level_fallback_when_no_chunk_truth():
     assert report.overall["recall@1"] == 1.0
 
 
+def test_doc_level_duplicates_do_not_inflate_ndcg():
+    # three chunks of the same document occupy ranks 1-3; the doc counts once
+    retriever = FakeRetriever([_res("u1", 7, 1), _res("u2", 7, 2), _res("u3", 7, 3)])
+    report = evaluate_strategy(retriever, [_row("r1", doc_ids=[7])], k_values=[3])
+    assert report.overall["ndcg@3"] == 1.0
+    assert report.overall["recall@3"] == 1.0
+
+
 def test_segments_and_errors_are_reported():
     class Exploding:
         name = "boom"

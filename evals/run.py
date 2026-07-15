@@ -66,6 +66,10 @@ def score_output(row: EvalRow, retrieved: list[dict], k_values: list[int]) -> di
         relevant = {str(d) for d in row.source_document_ids}
         ids = [str(r["document_id"]) for r in retrieved]
 
+    # Doc-level scoring maps many chunks to one document; keep first occurrence
+    # only, else repeated hits inflate DCG past the ideal (NDCG > 1).
+    ids = list(dict.fromkeys(ids))
+
     scores: dict[str, float] = {"mrr": mrr(relevant, ids)}
     for k in k_values:
         scores[f"recall@{k}"] = recall_at_k(relevant, ids, k)
