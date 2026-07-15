@@ -18,7 +18,28 @@ import sys
 from pathlib import Path
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+INLINE_CODE_RE = re.compile(r"(`+)(.+?)\1")
 SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
+
+
+def strip_code(text: str) -> str:
+    """Remove fenced code blocks and inline code spans before link scanning.
+
+    Code like ``strategy_map[strategy](...)`` otherwise matches the naive
+    link regex and produces false positives.
+    """
+    lines: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if fence is None:
+            if stripped.startswith(("```", "~~~")):
+                fence = stripped[:3]
+            else:
+                lines.append(line)
+        elif stripped.startswith(fence):
+            fence = None
+    return INLINE_CODE_RE.sub(" ", "\n".join(lines))
 
 
 def tracked_files() -> set[str]:
@@ -41,7 +62,7 @@ def main() -> int:
     failures: list[str] = []
 
     for md in sorted(p for p in tracked if p.endswith(".md")):
-        text = Path(md).read_text(encoding="utf-8")
+        text = strip_code(Path(md).read_text(encoding="utf-8"))
         for match in LINK_RE.finditer(text):
             raw = match.group(1)
             if raw.startswith(SKIP_PREFIXES):
