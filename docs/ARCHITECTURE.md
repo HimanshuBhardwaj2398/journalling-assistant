@@ -231,9 +231,9 @@ The SQLAlchemy engine and session factory live on a
 [`Database`](../db/database.py) object built lazily from `DatabaseSettings`;
 importing `db.database` requires no configuration and builds nothing (commit
 `1b8e1c4`). `set_default_database()` lets a composition root redirect the
-module-level `session_scope` — exactly how the SuttaCentral CLIs point the
-entire pipeline at `NEON_DIRECT_URL` — and tests inject an in-memory SQLite
-`Database` without environment hacks.
+module-level `session_scope` — exactly how `ingest_one.py` and
+`ingest_batch.py` point the entire pipeline at `NEON_DIRECT_URL` — and tests
+inject an in-memory SQLite `Database` without environment hacks.
 
 ### Hybrid retrieval: Postgres FTS + dense, replacing in-memory BM25
 

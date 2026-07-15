@@ -6,7 +6,7 @@ A RAG knowledge base over the Pali Canon. Ingests Buddhist scripture from
 SuttaCentral's API (plus PDFs and web pages), chunks it along semantic
 boundaries, embeds it into PostgreSQL + pgvector, and serves grounded,
 citation-backed answers. Retrieval is **benchmarked, not guessed** — four
-strategies are compared head-to-head on the corpus, and every retrieval
+strategies are compared head-to-head in LLM-judged runs, and every retrieval
 upgrade must beat the incumbent on IR metrics against chunk-level ground
 truth.
 
