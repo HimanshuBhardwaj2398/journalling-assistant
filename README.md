@@ -5,8 +5,10 @@
 A RAG knowledge base over the Pali Canon. Ingests Buddhist scripture from
 SuttaCentral's API (plus PDFs and web pages), chunks it along semantic
 boundaries, embeds it into PostgreSQL + pgvector, and serves grounded,
-citation-backed answers. Retrieval is **benchmarked, not guessed** — an
-LLM-as-judge evaluation compares four strategies against the corpus.
+citation-backed answers. Retrieval is **benchmarked, not guessed** — four
+strategies are compared head-to-head on the corpus, and every retrieval
+upgrade must beat the incumbent on IR metrics against chunk-level ground
+truth.
 
 ![Streamlit UI](docs/images/streamlit-ui.png)
 
@@ -42,8 +44,10 @@ flowchart LR
 ## Engineering highlights
 
 - **Retrieval evaluation, not vibes** — four strategies (top-k similarity, MMR,
-  score threshold, hybrid Postgres full-text + dense) benchmarked with
-  LLM-as-judge scoring before choosing what powers the query path.
+  score threshold, hybrid Postgres full-text + dense) compared in LLM-judged
+  eval runs, with an approved eval-gated ladder: every retrieval upgrade must
+  beat the incumbent on IR metrics (Recall@5, MRR) against chunk-UUID ground
+  truth.
   → [evaluation design](docs/plans/2026-07-13-retrieval-eval-strategy-design.md) ·
   [retrieval/](retrieval/)
 - **Grounded answers with provenance** — every answer cites chunk → document →
