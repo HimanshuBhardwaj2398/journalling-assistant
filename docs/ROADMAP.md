@@ -9,7 +9,7 @@
 | Sprint 1 | ✅ Complete | Docker setup, Pydantic config, critical fixes |
 | Sprint 2 | ✅ Complete | Strategy pattern, DAG orchestrator, full database layer |
 | Sprint 3 | ✅ Complete | Alembic migrations, test suite, UI polish, CI, reprocessing |
-| Phase 2 | 🔄 In Progress | RAG retrieval evaluation, query API |
+| Phase 2 | 🔄 In Progress | RAG retrieval evaluation ([eval design doc](plans/2026-07-13-retrieval-eval-strategy-design.md)), query API |
 
 ---
 
@@ -22,13 +22,15 @@ Evaluating 4 retrieval strategies against the meditation corpus:
 1. **Top-K similarity** — dense vector search via PGVector + Voyage AI
 2. **MMR** — Maximal Marginal Relevance, reduces redundant results
 3. **Score threshold** — only return chunks above a similarity cutoff
-4. **Hybrid BM25 + Semantic** — sparse keyword + dense vector via LangChain `EnsembleRetriever`
+4. **Hybrid FTS + Semantic** — PostgreSQL full-text search (tsvector) + dense vector, merged with weighted reciprocal rank fusion (semantic 0.6, FTS 0.4)
 
-LLM-as-judge scoring: Groq `llama-3.3-70b-versatile` rates each chunk 1–5 for relevance.
+Scoring follows the [eval design doc](plans/2026-07-13-retrieval-eval-strategy-design.md): IR metrics (Recall@5, MRR) against chunk-UUID ground truth — every retrieval upgrade must beat the incumbent to be promoted.
 
 **Output**: A comparison table and visualisation identifying the best retrieval strategy for the meditation corpus, informing the query API design.
 
-### RAG Query API (Planned)
+### RAG Query API (Partially built)
+
+The retrieval core already exists in code — `RetrievalEngine` (4 strategies), grounded answering with citations, multi-provider LLM client, optional Langfuse tracing. Remaining: HTTP API surface, caching, streaming.
 
 ```
 [Vector Database]
