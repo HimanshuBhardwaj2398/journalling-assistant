@@ -1,8 +1,9 @@
 """Tests for tolerant JSON extraction from small-model output."""
 
 import pytest
+from pydantic import BaseModel
 
-from agent.parsing import extract_json
+from agent.parsing import extract_json, parse_structured_with_retry
 
 
 def test_plain_json():
@@ -65,3 +66,47 @@ def test_no_json_raises():
 def test_malformed_json_raises():
     with pytest.raises(ValueError, match="Invalid JSON"):
         extract_json('{"a": unquoted}')
+
+
+class _StrictModel(BaseModel):
+    value: int
+
+
+class _FakeClient:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def complete(self, messages, temperature=0.0, max_tokens=200):
+        self.calls.append(messages)
+        return self.responses.pop(0)
+
+
+def test_retry_helper_first_try_success():
+    client = _FakeClient(['{"value": 7}'])
+    result = parse_structured_with_retry(client, [{"role": "user", "content": "go"}], _StrictModel)
+    assert result == _StrictModel(value=7)
+    assert len(client.calls) == 1
+
+
+def test_retry_helper_feedback_carries_error_and_succeeds():
+    # First reply fails pydantic validation; retry prompt must include the
+    # raw reply and the error, and the second reply must be accepted.
+    client = _FakeClient(['{"value": "not an int"}', '{"value": 3}'])
+    messages = [{"role": "user", "content": "go"}]
+    result = parse_structured_with_retry(client, messages, _StrictModel)
+    assert result == _StrictModel(value=3)
+    assert len(client.calls) == 2
+    retry = client.calls[1]
+    assert retry[-2] == {"role": "assistant", "content": '{"value": "not an int"}'}
+    assert retry[-1]["role"] == "user"
+    assert "Invalid" in retry[-1]["content"]
+    # original messages are not mutated
+    assert messages == [{"role": "user", "content": "go"}]
+
+
+def test_retry_helper_returns_none_after_two_failures():
+    client = _FakeClient(["nope", "still nope"])
+    result = parse_structured_with_retry(client, [{"role": "user", "content": "go"}], _StrictModel)
+    assert result is None
+    assert len(client.calls) == 2

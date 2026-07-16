@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -45,6 +45,30 @@ def extract_json(text: str) -> dict[str, Any]:
         return json.loads(_first_balanced_object(cleaned, start))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in model output: {exc}") from exc
+
+
+def parse_structured_with_retry(
+    client: Any, messages: list[dict], model_cls: Any
+) -> Optional[Any]:
+    """One try + one validation-feedback retry against a Pydantic model.
+
+    Shared by the interpreter and the graph nodes (grader). Returns None when
+    both attempts fail; callers own the fallback.
+    """
+    attempt = list(messages)
+    for _ in range(2):
+        raw = client.complete(attempt, max_tokens=300)
+        try:
+            return model_cls.model_validate(extract_json(raw))
+        except Exception as exc:  # ValueError from extract_json or pydantic ValidationError
+            attempt = list(messages) + [
+                {"role": "assistant", "content": raw},
+                {
+                    "role": "user",
+                    "content": f"Invalid. Error: {exc}. Reply with ONLY the JSON object.",
+                },
+            ]
+    return None
 
 
 def _first_balanced_object(text: str, start: int) -> str:
