@@ -51,6 +51,9 @@ class LLMClient:
 
     Reads LLMSettings directly (not the cached get_settings()) so each
     construction reflects the current environment — the seam tests rely on.
+
+    Note: with an explicit ``model_id``, ``provider`` is the text before the
+    first "/"; for a model_id without a "/", provider == model_id (unvalidated).
     """
 
     def __init__(
@@ -60,12 +63,17 @@ class LLMClient:
         model_id: Optional[str] = None,
         fallback_models: Optional[list[str]] = None,
     ) -> None:
-        settings = settings or LLMSettings()
         if model_id is None:
+            settings = settings or LLMSettings()
             self.provider = settings.provider
             model = settings.model or _PROVIDER_DEFAULTS[self.provider]
             self.model_id = f"{self.provider}/{model}"
         else:
+            # provider= is unused on this path; pinning a valid value keeps
+            # ambient LLM_PROVIDER from poisoning env-independent explicit
+            # chains (init kwargs beat env in pydantic-settings, while the
+            # ollama_base_url env aliases still resolve).
+            settings = settings or LLMSettings(provider="groq")
             self.model_id = model_id
             self.provider = model_id.split("/", 1)[0]
         self.fallback_models = list(fallback_models or [])
@@ -103,10 +111,23 @@ class LLMClient:
                     )
                 except Exception as exc:
                     last_exc = exc
-                    logger.warning("LLM %s failed (%s); escalating", model, exc)
+                    logger.warning(
+                        "LLM %s failed (%s: %s); %s",
+                        model,
+                        type(exc).__name__,
+                        exc,
+                        "all rungs exhausted" if index == len(chain) - 1 else "escalating",
+                    )
                     continue
 
-                text = response.choices[0].message.content.strip()
+                content = response.choices[0].message.content
+                if not content or not content.strip():
+                    # Realistic for reasoning models: thinking can burn the whole
+                    # max_tokens budget and leave content None/empty.
+                    last_exc = RuntimeError(f"{model} returned empty content")
+                    logger.warning("LLM %s returned empty content; trying next rung", model)
+                    continue
+                text = content.strip()
                 usage = getattr(response, "usage", None)
                 usage_details = None
                 if usage is not None:
@@ -126,7 +147,13 @@ class LLMClient:
                     metadata={"served_by": model, "escalations": index},
                 )
                 return text
-            assert last_exc is not None  # chain always has >= 1 rung
+            if last_exc is None:  # unreachable: chain always has >= 1 rung
+                raise RuntimeError("model chain was empty")
+            observation.update(
+                level="ERROR",
+                status_message=str(last_exc),
+                metadata={"escalations": len(chain)},
+            )
             raise last_exc
 
     def __repr__(self) -> str:
