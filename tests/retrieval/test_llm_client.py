@@ -80,3 +80,66 @@ class TestEvalLLMClientComplete:
             client = EvalLLMClient()
             result = client.complete(messages=[{"role": "user", "content": "test"}])
         assert result == "hello"
+
+
+class TestLLMClientFallbackChain:
+    def test_explicit_model_id_overrides_settings(self, monkeypatch):
+        monkeypatch.setenv("LLM_PROVIDER", "groq")
+        from retrieval.llm_client import LLMClient
+
+        client = LLMClient(model_id="ollama/qwen3:8b")
+        assert client.model_id == "ollama/qwen3:8b"
+        assert client.provider == "ollama"
+
+    def test_fallback_escalates_on_error(self, monkeypatch):
+        import litellm
+
+        from retrieval.llm_client import LLMClient
+
+        calls = []
+
+        def flaky_completion(**kwargs):
+            calls.append(kwargs["model"])
+            if kwargs["model"].startswith("ollama/"):
+                raise RuntimeError("connection refused")
+            return make_mock_response("ok")
+
+        with patch.object(litellm, "completion", side_effect=flaky_completion):
+            client = LLMClient(
+                model_id="ollama/qwen3:8b",
+                fallback_models=["groq/llama-3.3-70b-versatile"],
+            )
+            result = client.complete(messages=[{"role": "user", "content": "hi"}])
+
+        assert result == "ok"
+        assert calls == ["ollama/qwen3:8b", "groq/llama-3.3-70b-versatile"]
+
+    def test_all_rungs_fail_raises_last_error(self, monkeypatch):
+        import litellm
+
+        from retrieval.llm_client import LLMClient
+
+        with patch.object(litellm, "completion", side_effect=RuntimeError("down")):
+            client = LLMClient(model_id="ollama/qwen3:8b", fallback_models=["groq/x"])
+            with pytest.raises(RuntimeError, match="down"):
+                client.complete(messages=[{"role": "user", "content": "hi"}])
+
+    def test_ollama_api_base_passed_per_call_only(self, monkeypatch):
+        import litellm
+
+        from retrieval.llm_client import LLMClient
+
+        seen = []
+
+        def record_completion(**kwargs):
+            seen.append((kwargs["model"], kwargs.get("api_base")))
+            if kwargs["model"].startswith("ollama/"):
+                raise RuntimeError("down")
+            return make_mock_response("ok")
+
+        with patch.object(litellm, "completion", side_effect=record_completion):
+            client = LLMClient(model_id="ollama/qwen3:8b", fallback_models=["groq/x"])
+            client.complete(messages=[{"role": "user", "content": "hi"}])
+
+        assert seen[0][1] is not None          # ollama call carries api_base
+        assert seen[1][1] is None              # groq call must NOT
