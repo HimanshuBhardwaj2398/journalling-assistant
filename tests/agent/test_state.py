@@ -24,6 +24,31 @@ def test_unknown_intent_coerced_to_other():
     assert iq.intent == "other"
 
 
+def test_intent_case_normalized():
+    iq = InterpretedQuery(intent="Corpus_Question")
+    assert iq.intent == "corpus_question"
+
+
+def test_intent_whitespace_normalized():
+    iq = InterpretedQuery(intent=" corpus_question ")
+    assert iq.intent == "corpus_question"
+
+
+def test_lone_string_query_wrapped_in_list():
+    iq = InterpretedQuery(intent="corpus_question", queries="what is jhana")
+    assert iq.queries == ["what is jhana"]
+
+
+def test_none_queries_coerced_to_empty_list():
+    iq = InterpretedQuery(intent="corpus_question", queries=None)
+    assert iq.queries == []
+
+
+def test_queries_filtered_to_nonempty_strings():
+    iq = InterpretedQuery(intent="corpus_question", queries=[1, "ok", "  "])
+    assert iq.queries == ["ok"]
+
+
 def test_agent_state_defaults():
     state = AgentState(user_message="what is jhana?")
     assert state.iterations == 0

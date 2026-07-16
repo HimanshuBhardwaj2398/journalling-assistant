@@ -25,7 +25,21 @@ class InterpretedQuery(BaseModel):
     @field_validator("intent", mode="before")
     @classmethod
     def coerce_intent(cls, v: Any) -> str:
+        if isinstance(v, str):
+            v = v.lower().strip()
         return v if v in ("corpus_question", "other") else "other"
+
+    @field_validator("queries", mode="before")
+    @classmethod
+    def coerce_queries(cls, v: Any) -> list[str]:
+        """Tolerate common small-LLM output shapes instead of failing the parse."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = [v]
+        if not isinstance(v, list):
+            return []
+        return [q.strip() for q in v if isinstance(q, str) and q.strip()]
 
     @field_validator("strategy_hint", mode="before")
     @classmethod
