@@ -202,6 +202,18 @@ class LLMSettings(BaseSettings):
         description="Base URL for a local Ollama server",
     )
 
+    # Agent role→model routing (design: 2026-07-16-agentic-rag-v1). Format
+    # "provider/model", e.g. LLM_ROLE_GRADER=groq/llama-3.1-8b-instant.
+    role_interpreter: Optional[str] = Field(
+        default=None, description="Model id for the query-interpreter role"
+    )
+    role_grader: Optional[str] = Field(
+        default=None, description="Model id for the sufficiency-grader role"
+    )
+    role_answerer: Optional[str] = Field(
+        default=None, description="Model id for the answer-generation role"
+    )
+
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, v: str) -> str:
