@@ -52,6 +52,7 @@ streamlit = ">=1.30.0,<2.0.0"
 # Exclude litellm 1.82.8 (CVE-2026-42208: compromised wheel exfiltrates credentials on import).
 litellm = ">=1.40.0,<2.0.0,!=1.82.8"
 langfuse = ">=4.0.0,<5.0.0"
+langgraph = "^0.6"
 
 [tool.poetry.group.dev.dependencies]
 # Development tools
