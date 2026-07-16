@@ -125,7 +125,11 @@ class LLMClient:
                     # Realistic for reasoning models: thinking can burn the whole
                     # max_tokens budget and leave content None/empty.
                     last_exc = RuntimeError(f"{model} returned empty content")
-                    logger.warning("LLM %s returned empty content; trying next rung", model)
+                    logger.warning(
+                        "LLM %s returned empty content; %s",
+                        model,
+                        "all rungs exhausted" if index == len(chain) - 1 else "escalating",
+                    )
                     continue
                 text = content.strip()
                 usage = getattr(response, "usage", None)

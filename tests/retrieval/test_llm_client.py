@@ -162,11 +162,22 @@ class TestLLMClientFallbackChain:
         monkeypatch.setenv("LLM_PROVIDER", "bogus")
         import litellm
 
+        from config.settings import get_settings
+        from observability.langfuse import get_langfuse_tracer
         from retrieval.llm_client import LLMClient
 
-        with patch.object(litellm, "completion", return_value=make_mock_response("ok")):
-            client = LLMClient(model_id="ollama/qwen3:8b")
-            result = client.complete(messages=[{"role": "user", "content": "hi"}])
+        # Drop instances cached under a valid env so this test exercises the
+        # cold path (fresh tracer + root settings under the bogus env); clear
+        # again afterwards so bogus-env instances don't leak into later tests.
+        get_langfuse_tracer.cache_clear()
+        get_settings.cache_clear()
+        try:
+            with patch.object(litellm, "completion", return_value=make_mock_response("ok")):
+                client = LLMClient(model_id="ollama/qwen3:8b")
+                result = client.complete(messages=[{"role": "user", "content": "hi"}])
+        finally:
+            get_langfuse_tracer.cache_clear()
+            get_settings.cache_clear()
 
         assert client.model_id == "ollama/qwen3:8b"
         assert client.provider == "ollama"
