@@ -223,6 +223,21 @@ class LLMSettings(BaseSettings):
             raise ValueError(f"Unknown LLM_PROVIDER '{v}'. Must be one of: {list(allowed)}")
         return normalized
 
+    @field_validator("role_interpreter", "role_grader", "role_answerer")
+    @classmethod
+    def validate_role_model_id(cls, v: Optional[str]) -> Optional[str]:
+        # A bare model name (no provider prefix) would land off the fallback
+        # ladder and silently get every rung as a fallback — fail loudly here.
+        if v is None:
+            return v
+        normalized = v.strip()
+        if "/" not in normalized:
+            raise ValueError(
+                f"Invalid role model id '{v}'. Expected 'provider/model' format, "
+                "e.g. 'groq/llama-3.3-70b-versatile'."
+            )
+        return normalized
+
 
 class VectorSettings(BaseSettings):
     """Vector store configuration."""
