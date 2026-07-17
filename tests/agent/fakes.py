@@ -71,12 +71,14 @@ class FakeRetriever:
 
 
 class FakeInterpreter:
-    """Always returns the same InterpretedQuery."""
+    """Always returns the same InterpretedQuery; records (user_message, history)."""
 
     def __init__(self, result):
         self.result = result
+        self.calls = []
 
     def interpret(self, user_message, history=None):
+        self.calls.append((user_message, history))
         return self.result
 
 

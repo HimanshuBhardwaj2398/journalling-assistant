@@ -189,15 +189,20 @@ def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
 
 
 def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
-    if not state.retrieved:
-        # The grader can hallucinate "sufficient" on empty context, and
-        # GroundedAnswerService raises on empty search_results — degrade to
-        # a clarify turn instead of crashing the graph.
-        logger.warning("answer_node reached with no retrieved chunks; clarifying")
-        return {"outcome": "clarify", "final_text": DEFAULT_CLARIFYING_QUESTION}
     with deps.tracer.observe(
         name="agent.answer", metadata={"chunks": len(state.retrieved)}
     ) as obs:
+        if not state.retrieved:
+            # The grader can hallucinate "sufficient" on empty context, and
+            # GroundedAnswerService raises on empty search_results — degrade
+            # to a clarify turn instead of crashing the graph. Guard lives
+            # inside the span so the degradation is visible in Langfuse.
+            logger.warning("answer_node reached with no retrieved chunks; clarifying")
+            obs.update(
+                output=DEFAULT_CLARIFYING_QUESTION,
+                metadata={"degraded": "empty_retrieval"},
+            )
+            return {"outcome": "clarify", "final_text": DEFAULT_CLARIFYING_QUESTION}
         response = deps.answer_service.answer(state.user_message, state.retrieved)
         obs.update(output=response.answer)
         return {

@@ -145,6 +145,11 @@ def test_answer_node_empty_retrieval_degrades_to_clarify():
     update = answer_node(AgentState(user_message="jhana?", retrieved=[]), deps=deps)
     assert update["outcome"] == "clarify"
     assert update["final_text"] == DEFAULT_CLARIFYING_QUESTION
+    # Degradation must be visible in the trace, not a silent early return.
+    span = deps.tracer.spans[-1]
+    assert span["kwargs"]["name"] == "agent.answer"
+    assert span["updates"][-1]["metadata"] == {"degraded": "empty_retrieval"}
+    assert span["updates"][-1]["output"] == DEFAULT_CLARIFYING_QUESTION
 
 
 def test_retrieve_node_new_results_enter_when_old_fills_cap():
