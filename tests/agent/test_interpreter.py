@@ -2,7 +2,7 @@
 
 from agent.interpreter import LLMQueryInterpreter
 from agent.state import InterpretedQuery
-from tests.agent.conftest import FakeLLMClient
+from tests.agent.fakes import FakeLLMClient
 
 
 def test_parses_valid_response():

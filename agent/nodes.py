@@ -1,0 +1,185 @@
+"""Graph node functions. Plain functions over AgentState with injected deps.
+
+Every node opens a tracer-port span; LangGraph never sees the tracer.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+from agent.parsing import extract_json, parse_structured_with_retry
+from agent.state import AgentState, InterpretedQuery, SufficiencyGrade
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_CLARIFYING_QUESTION = (
+    "I could not find enough in the texts to answer confidently. "
+    "Could you say more about what you are looking for — a specific "
+    "practice, concept, or text?"
+)
+
+DIRECT_SYSTEM_PROMPT = (
+    "You are a friendly assistant for a meditation-texts knowledge base. "
+    "The user's message is small talk or out of scope. Reply briefly and, "
+    "when natural, mention you can answer questions about meditation and "
+    "the Pali Canon."
+)
+
+GRADER_SYSTEM_PROMPT = """You judge whether retrieved text chunks contain enough information to answer a question about Buddhist texts and meditation.
+
+Return ONLY a JSON object:
+{
+  "sufficient": true | false,
+  "missing_info": null | "what is missing",
+  "clarifying_question": null | "one specific question to ask the user"
+}
+
+Set "clarifying_question" only when asking the user would genuinely help
+(ambiguous question, missing context). Judge strictly: partial or tangential
+chunks are not sufficient."""
+
+REWRITE_SYSTEM_PROMPT = """You write alternate search queries for a semantic search system over Buddhist texts.
+
+Given the user's question, the queries already tried, and what was missing,
+return ONLY a JSON object: {"queries": ["1-2 new short search queries"]}.
+Try different vocabulary (Pali terms vs English, broader or narrower)."""
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    default_strategy: str = "hybrid"  # eval winner, RETRIEVAL_EVALS.md §"hybrid wins"
+    k: int = 5
+    max_context_chunks: int = 8
+    max_rewrites: int = 2
+
+
+@dataclass
+class AgentDeps:
+    interpreter: Any            # QueryInterpreter
+    grader_client: Any          # LLMClient (grader role)
+    direct_client: Any          # LLMClient (interpreter/small role)
+    answer_service: Any         # GroundedAnswerService
+    retrievers: dict[str, Any]  # registry: name -> Retriever
+    tracer: Any                 # LangfuseTracer (or fake)
+    config: AgentConfig = field(default_factory=AgentConfig)
+
+
+def interpret_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    with deps.tracer.observe(name="agent.interpret", input=state.user_message) as obs:
+        interpreted = deps.interpreter.interpret(state.user_message, history=state.messages)
+        obs.update(output=interpreted.model_dump())
+        return {"interpreted": interpreted}
+
+
+def retrieve_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    interpreted = state.interpreted or InterpretedQuery(queries=[state.user_message])
+    strategy = interpreted.strategy_hint or deps.config.default_strategy
+    retriever = deps.retrievers.get(strategy) or deps.retrievers[deps.config.default_strategy]
+
+    with deps.tracer.observe(
+        name="agent.retrieve",
+        input=interpreted.queries,
+        metadata={"strategy": retriever.name, "k": deps.config.k},
+    ) as obs:
+        merged = list(state.retrieved)
+        seen = {r.chunk_uuid for r in merged if r.chunk_uuid}
+        for query in interpreted.queries:
+            for result in retriever.retrieve(query, k=deps.config.k):
+                key = result.chunk_uuid or result.text
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(result)
+        merged = merged[: deps.config.max_context_chunks]
+        obs.update(output={"chunks": len(merged)})
+        return {"retrieved": merged}
+
+
+def grade_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    excerpts = "\n\n".join(
+        f"[{i + 1}] {r.text[:500]}" for i, r in enumerate(state.retrieved)
+    ) or "(no chunks retrieved)"
+    messages = [
+        {"role": "system", "content": GRADER_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"Question: {state.user_message}\n\nRetrieved chunks:\n{excerpts}",
+        },
+    ]
+    with deps.tracer.observe(
+        name="agent.grade", input={"chunks": len(state.retrieved)}
+    ) as obs:
+        grade = parse_structured_with_retry(deps.grader_client, messages, SufficiencyGrade)
+        if grade is None:
+            logger.warning("grader failed twice; treating context as insufficient")
+            grade = SufficiencyGrade(sufficient=False, missing_info="grader unavailable")
+        obs.update(output=grade.model_dump())
+        return {"grade": grade}
+
+
+def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    interpreted = state.interpreted or InterpretedQuery(queries=[state.user_message])
+    missing = state.grade.missing_info if state.grade else None
+    messages = [
+        {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"Question: {state.user_message}\n"
+                f"Tried queries: {interpreted.queries}\n"
+                f"Missing: {missing or 'unknown'}"
+            ),
+        },
+    ]
+    with deps.tracer.observe(name="agent.rewrite", input=messages[-1]["content"]) as obs:
+        new_queries: list[str] = []
+        try:
+            raw = deps.direct_client.complete(messages, max_tokens=200)
+            parsed = extract_json(raw)
+            new_queries = [q for q in parsed.get("queries", []) if isinstance(q, str)][:2]
+        except Exception as exc:
+            logger.warning("rewrite failed (%s); reusing original question", exc)
+        if not new_queries:
+            new_queries = [state.user_message]
+        obs.update(output=new_queries)
+        return {
+            "interpreted": interpreted.model_copy(update={"queries": new_queries}),
+            "iterations": state.iterations + 1,
+        }
+
+
+def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    with deps.tracer.observe(
+        name="agent.answer", metadata={"chunks": len(state.retrieved)}
+    ) as obs:
+        response = deps.answer_service.answer(state.user_message, state.retrieved)
+        obs.update(output=response.answer)
+        return {
+            "outcome": "answer",
+            "final_text": response.answer,
+            "citations": list(response.citations),
+        }
+
+
+def clarify_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    question = (
+        state.grade.clarifying_question if state.grade and state.grade.clarifying_question
+        else DEFAULT_CLARIFYING_QUESTION
+    )
+    with deps.tracer.observe(name="agent.clarify") as obs:
+        obs.update(output=question)
+        return {"outcome": "clarify", "final_text": question}
+
+
+def respond_direct_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    messages = [
+        {"role": "system", "content": DIRECT_SYSTEM_PROMPT},
+        *state.messages[-4:],
+        {"role": "user", "content": state.user_message},
+    ]
+    with deps.tracer.observe(name="agent.respond_direct", input=state.user_message) as obs:
+        text = deps.direct_client.complete(messages, max_tokens=150)
+        obs.update(output=text)
+        return {"outcome": "direct", "final_text": text}

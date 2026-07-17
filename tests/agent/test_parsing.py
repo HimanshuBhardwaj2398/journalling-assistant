@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel
 
 from agent.parsing import extract_json, parse_structured_with_retry
-from tests.agent.conftest import FakeLLMClient
+from tests.agent.fakes import FakeLLMClient
 
 
 def test_plain_json():
