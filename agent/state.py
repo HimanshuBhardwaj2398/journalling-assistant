@@ -14,6 +14,8 @@ from retrieval.query import RetrievalStrategy, SearchResult
 
 _VALID_STRATEGIES = {s.value for s in RetrievalStrategy}
 
+Outcome = Literal["answer", "clarify", "direct"]
+
 
 class InterpretedQuery(BaseModel):
     """Output of the QueryInterpreter: intent + retrieval rewrites."""
@@ -71,6 +73,6 @@ class AgentState(BaseModel):
     retrieved: list[SearchResult] = []
     grade: Optional[SufficiencyGrade] = None
     iterations: int = 0
-    outcome: Optional[Literal["answer", "clarify", "direct"]] = None
+    outcome: Optional[Outcome] = None
     final_text: Optional[str] = None
     citations: list[Any] = []  # AnswerCitation list when outcome == "answer"

@@ -1,9 +1,12 @@
 """run_turn service tests with injected fake deps — no network, no DB."""
 
+import logging
+from contextlib import contextmanager
+
 import pytest
 
-from agent.nodes import AgentConfig, AgentDeps
-from agent.service import AgentTurnResult, run_turn
+from agent.nodes import DEFAULT_CLARIFYING_QUESTION, AgentConfig, AgentDeps
+from agent.service import AgentTurnResult, build_default_deps, run_turn
 from agent.state import InterpretedQuery
 from tests.agent.fakes import (
     FakeAnswerService,
@@ -76,6 +79,73 @@ def test_run_turn_passes_history_to_interpreter():
     assert called_history == history
     # History is PRIOR turns only: the in-flight message must not be in it.
     assert all(m["content"] != "what is jhana?" for m in called_history)
+
+
+class GraphWithoutOutcome:
+    """Simulates a wiring bug: the graph ends without any terminal node."""
+
+    def invoke(self, initial):
+        return {"user_message": initial.user_message}
+
+
+def test_run_turn_missing_outcome_warns_and_falls_back(monkeypatch, caplog):
+    deps = make_deps()
+    monkeypatch.setattr("agent.service.build_agent_graph", lambda _deps: GraphWithoutOutcome())
+
+    with caplog.at_level(logging.WARNING, logger="agent.service"):
+        result = run_turn("what is jhana?", deps=deps)
+
+    assert result.outcome == "clarify"
+    assert result.text == DEFAULT_CLARIFYING_QUESTION
+    assert any("outcome" in record.message for record in caplog.records)
+
+
+class TraceIdTracer:
+    """Fake tracer whose root-span handle exposes trace_id/trace_url."""
+
+    def observe(self, **kwargs):
+        @contextmanager
+        def _cm():
+            class Handle:
+                trace_id = "trace-abc"
+                trace_url = "https://langfuse.local/trace/trace-abc"
+
+                def update(self, **kw):
+                    pass
+
+            yield Handle()
+
+        return _cm()
+
+
+def test_run_turn_exposes_trace_id_and_url_from_root_span():
+    deps = make_deps(tracer=TraceIdTracer())
+    result = run_turn("what is jhana?", deps=deps)
+    assert result.trace_id == "trace-abc"
+    assert result.trace_url == "https://langfuse.local/trace/trace-abc"
+
+
+def test_build_default_deps_shares_one_interpreter_client(monkeypatch):
+    roles_requested = []
+
+    def fake_client_for_role(role, settings=None, tracer=None):
+        roles_requested.append(role)
+        return FakeLLMClient([])
+
+    monkeypatch.setattr("agent.service.client_for_role", fake_client_for_role)
+    monkeypatch.setattr("agent.service.get_langfuse_tracer", lambda: FakeTracer())
+    monkeypatch.setattr(
+        "agent.service.default_retrievers", lambda: {"hybrid": FakeRetriever({})}
+    )
+    monkeypatch.setattr(
+        "agent.service.GroundedAnswerService", lambda **kwargs: FakeAnswerService()
+    )
+
+    deps = build_default_deps()
+
+    # One small-model client serves both the interpreter and direct replies.
+    assert roles_requested.count("interpreter") == 1
+    assert deps.direct_client is deps.interpreter._client
 
 
 def test_run_turn_records_error_on_root_span_and_reraises():

@@ -20,7 +20,15 @@ load_dotenv()
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from views import browse, ingest, queue, rag_playground, stats, validation  # noqa: E402
+from views import (  # noqa: E402
+    agent_playground,
+    browse,
+    ingest,
+    queue,
+    rag_playground,
+    stats,
+    validation,
+)
 
 # Page configuration
 st.set_page_config(
@@ -55,6 +63,7 @@ with st.sidebar:
             "Processing Queue",
             "Browse Database",
             "RAG Playground",
+            "Agent Playground",
             "Statistics",
             "Validation",
         ],
@@ -74,6 +83,8 @@ elif page == "Browse Database":
     browse.render()
 elif page == "RAG Playground":
     rag_playground.render()
+elif page == "Agent Playground":
+    agent_playground.render()
 elif page == "Statistics":
     stats.render()
 elif page == "Validation":

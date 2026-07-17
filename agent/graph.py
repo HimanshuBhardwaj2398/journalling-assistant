@@ -37,6 +37,8 @@ def make_route_after_grade(max_rewrites: int):
 
 
 def build_agent_graph(deps: AgentDeps):
+    # Longest path (max_rewrites=2 → ~10 supersteps) sits well under
+    # LangGraph's default recursion limit of 25.
     graph = StateGraph(AgentState)
     graph.add_node("interpret", partial(interpret_node, deps=deps))
     graph.add_node("retrieve", partial(retrieve_node, deps=deps))
