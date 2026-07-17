@@ -32,19 +32,25 @@ class FakeLLMClient:
 
 
 class FakeTracer:
-    """Records observe() kwargs; yields a no-op span handle."""
+    """Records every observe() call and every handle.update() per span.
+
+    Each entry in ``spans`` is ``{"kwargs": <observe kwargs>, "updates":
+    [<update kwargs>, ...]}`` so tests can assert both span names and what
+    the node reported as output.
+    """
 
     def __init__(self):
         self.spans = []
 
     def observe(self, **kwargs):
-        self.spans.append(kwargs)
+        record = {"kwargs": kwargs, "updates": []}
+        self.spans.append(record)
 
         @contextmanager
         def _cm():
             class Handle:
                 def update(self, **kw):
-                    pass
+                    record["updates"].append(kw)
 
             yield Handle()
 
@@ -52,13 +58,15 @@ class FakeTracer:
 
 
 class FakeRetriever:
-    """Returns scripted results per query string."""
+    """Returns scripted results per query string; records (query, k) calls."""
 
     def __init__(self, results_by_query):
         self.results_by_query = results_by_query
         self.name = "hybrid"
+        self.calls = []
 
     def retrieve(self, query, k=5):
+        self.calls.append((query, k))
         return self.results_by_query.get(query, [])
 
 
@@ -73,9 +81,13 @@ class FakeInterpreter:
 
 
 class FakeAnswerService:
-    """Canned grounded answer with an empty citation list."""
+    """Canned grounded answer; mirrors the real service's empty-input contract."""
 
     def answer(self, query, search_results):
+        if not search_results:
+            # GroundedAnswerService raises here too (retrieval/answering.py);
+            # keeping the fake honest so nodes can't paper over empty context.
+            raise ValueError("Cannot synthesize an answer without search results.")
         return AnswerResponse(
             query=query,
             answer="Jhana is absorption. [1]",

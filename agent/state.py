@@ -64,7 +64,9 @@ class AgentState(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     user_message: str
-    messages: list[dict[str, str]] = []  # prior turns, chat format
+    # PRIOR turns only, chat format. The in-flight user_message must NOT be
+    # included here — nodes append it themselves (see respond_direct_node).
+    messages: list[dict[str, str]] = []
     interpreted: Optional[InterpretedQuery] = None
     retrieved: list[SearchResult] = []
     grade: Optional[SufficiencyGrade] = None

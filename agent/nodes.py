@@ -38,12 +38,15 @@ Return ONLY a JSON object:
 
 Set "clarifying_question" only when asking the user would genuinely help
 (ambiguous question, missing context). Judge strictly: partial or tangential
-chunks are not sufficient."""
+chunks are not sufficient. Excerpts may be truncated previews of longer
+chunks — judge on what is present rather than penalizing apparent
+incompleteness."""
 
 REWRITE_SYSTEM_PROMPT = """You write alternate search queries for a semantic search system over Buddhist texts.
 
 Given the user's question, the queries already tried, and what was missing,
-return ONLY a JSON object: {"queries": ["1-2 new short search queries"]}.
+return ONLY a JSON object with 1-2 new short search queries, for example:
+{"queries": ["jhana absorption factors", "samadhi first jhana"]}
 Try different vocabulary (Pali terms vs English, broader or narrower)."""
 
 
@@ -65,6 +68,15 @@ class AgentDeps:
     tracer: Any                 # LangfuseTracer (or fake)
     config: AgentConfig = field(default_factory=AgentConfig)
 
+    def __post_init__(self) -> None:
+        # Fail at wiring time, not mid-turn: retrieve_node falls back to the
+        # default strategy, so it must always be in the registry.
+        if self.config.default_strategy not in self.retrievers:
+            raise ValueError(
+                f"default_strategy {self.config.default_strategy!r} missing "
+                f"from retrievers registry {sorted(self.retrievers)}"
+            )
+
 
 def interpret_node(state: AgentState, *, deps: AgentDeps) -> dict:
     with deps.tracer.observe(name="agent.interpret", input=state.user_message) as obs:
@@ -81,25 +93,46 @@ def retrieve_node(state: AgentState, *, deps: AgentDeps) -> dict:
     with deps.tracer.observe(
         name="agent.retrieve",
         input=interpreted.queries,
-        metadata={"strategy": retriever.name, "k": deps.config.k},
+        metadata={
+            "strategy": retriever.name,
+            "k": deps.config.k,
+            "iterations": state.iterations,
+        },
     ) as obs:
-        merged = list(state.retrieved)
-        seen = {r.chunk_uuid for r in merged if r.chunk_uuid}
+        old = list(state.retrieved)
+        seen = {r.chunk_uuid or r.text for r in old}
+        new: list[Any] = []
         for query in interpreted.queries:
             for result in retriever.retrieve(query, k=deps.config.k):
                 key = result.chunk_uuid or result.text
                 if key in seen:
                     continue
                 seen.add(key)
-                merged.append(result)
-        merged = merged[: deps.config.max_context_chunks]
-        obs.update(output={"chunks": len(merged)})
+                new.append(result)
+        # Fresh results get guaranteed entry: the grader judged the old
+        # context insufficient (that is why we are retrieving again), so new
+        # evidence outranks stale slots. Keep all new results up to the cap
+        # (trimming new's own tail if it alone exceeds it) and fill the
+        # remaining slots with old results in their existing order.
+        cap = deps.config.max_context_chunks
+        n_new_unique = len(new)
+        new = new[:cap]
+        merged = old[: cap - len(new)] + new
+        obs.update(
+            output={
+                "chunks": len(merged),
+                "new": n_new_unique,
+                "dropped": len(old) + n_new_unique - len(merged),
+            }
+        )
         return {"retrieved": merged}
 
 
 def grade_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    # 1000-char excerpts: corpus min chunk size is 700, so most chunks fit
+    # whole; the prompt tells the grader longer ones are truncated previews.
     excerpts = "\n\n".join(
-        f"[{i + 1}] {r.text[:500]}" for i, r in enumerate(state.retrieved)
+        f"[{i + 1}] {r.text[:1000]}" for i, r in enumerate(state.retrieved)
     ) or "(no chunks retrieved)"
     messages = [
         {"role": "system", "content": GRADER_SYSTEM_PROMPT},
@@ -109,7 +142,9 @@ def grade_node(state: AgentState, *, deps: AgentDeps) -> dict:
         },
     ]
     with deps.tracer.observe(
-        name="agent.grade", input={"chunks": len(state.retrieved)}
+        name="agent.grade",
+        input={"chunks": len(state.retrieved)},
+        metadata={"iterations": state.iterations},
     ) as obs:
         grade = parse_structured_with_retry(deps.grader_client, messages, SufficiencyGrade)
         if grade is None:
@@ -144,6 +179,9 @@ def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
         if not new_queries:
             new_queries = [state.user_message]
         obs.update(output=new_queries)
+        # Accepted limitation: replacing queries means a second rewrite does
+        # not see the original tried set. Dedupe in retrieve_node absorbs
+        # re-proposals; revisit if traces show wasted iterations.
         return {
             "interpreted": interpreted.model_copy(update={"queries": new_queries}),
             "iterations": state.iterations + 1,
@@ -151,6 +189,12 @@ def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
 
 
 def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    if not state.retrieved:
+        # The grader can hallucinate "sufficient" on empty context, and
+        # GroundedAnswerService raises on empty search_results — degrade to
+        # a clarify turn instead of crashing the graph.
+        logger.warning("answer_node reached with no retrieved chunks; clarifying")
+        return {"outcome": "clarify", "final_text": DEFAULT_CLARIFYING_QUESTION}
     with deps.tracer.observe(
         name="agent.answer", metadata={"chunks": len(state.retrieved)}
     ) as obs:
@@ -174,6 +218,8 @@ def clarify_node(state: AgentState, *, deps: AgentDeps) -> dict:
 
 
 def respond_direct_node(state: AgentState, *, deps: AgentDeps) -> dict:
+    # state.messages is PRIOR turns only; the in-flight user_message is
+    # appended here. The service layer must not pre-include it in messages.
     messages = [
         {"role": "system", "content": DIRECT_SYSTEM_PROMPT},
         *state.messages[-4:],
