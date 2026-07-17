@@ -6,11 +6,13 @@ Sits above retrieval: retrievers never see the raw user message.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 
 from agent.parsing import parse_structured_with_retry
 from agent.state import InterpretedQuery
-from retrieval.llm_client import LLMClient
+
+if TYPE_CHECKING:
+    from retrieval.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ class QueryInterpreter(Protocol):
 class LLMQueryInterpreter:
     """Small-model interpreter with one validation-feedback retry."""
 
-    def __init__(self, client: LLMClient) -> None:
+    def __init__(self, client: "LLMClient") -> None:
         self._client = client
 
     def interpret(
@@ -49,6 +51,8 @@ class LLMQueryInterpreter:
     ) -> InterpretedQuery:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if history:
+            # Known tradeoff: flattened history could spoof turns via injected
+            # "role:" prefixes in content; acceptable v1 blast radius.
             transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history[-6:])
             messages.append(
                 {"role": "user", "content": f"Conversation so far:\n{transcript}"}
@@ -59,6 +63,8 @@ class LLMQueryInterpreter:
         if interpreted is None:
             logger.warning("interpreter failed twice; falling back to raw message")
             interpreted = InterpretedQuery(intent="corpus_question", queries=[])
-        if not interpreted.queries:
+        if not interpreted.queries and interpreted.intent == "corpus_question":
+            # Backfill only for corpus questions: for intent="other" the raw
+            # message must not leak toward retrieval (seam invariant).
             interpreted = interpreted.model_copy(update={"queries": [user_message]})
         return interpreted

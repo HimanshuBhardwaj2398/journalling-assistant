@@ -2,16 +2,7 @@
 
 from agent.interpreter import LLMQueryInterpreter
 from agent.state import InterpretedQuery
-
-
-class FakeLLMClient:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = []
-
-    def complete(self, messages, temperature=0.0, max_tokens=200):
-        self.calls.append(messages)
-        return self.responses.pop(0)
+from tests.agent.conftest import FakeLLMClient
 
 
 def test_parses_valid_response():
@@ -42,10 +33,27 @@ def test_falls_back_to_user_message_after_two_failures():
     assert result.queries == ["what is vipassana?"]
 
 
+def test_falls_back_to_user_message_when_transport_fails_twice():
+    # All-rungs-down LLM client must not crash the turn.
+    client = FakeLLMClient([RuntimeError("all rungs down"), RuntimeError("still down")])
+    result = LLMQueryInterpreter(client).interpret("what is vipassana?")
+    assert result.intent == "corpus_question"
+    assert result.queries == ["what is vipassana?"]
+
+
 def test_empty_queries_backfilled_with_user_message():
     client = FakeLLMClient(['{"intent": "corpus_question", "queries": []}'])
     result = LLMQueryInterpreter(client).interpret("anapanasati steps")
     assert result.queries == ["anapanasati steps"]
+
+
+def test_other_intent_with_empty_queries_stays_empty():
+    # Seam invariant: the raw message must not leak toward retrieval for
+    # non-corpus turns, regardless of downstream routing.
+    client = FakeLLMClient(['{"intent": "other", "queries": []}'])
+    result = LLMQueryInterpreter(client).interpret("hey, how are you?")
+    assert result.intent == "other"
+    assert result.queries == []
 
 
 def test_history_is_included_in_prompt():
@@ -55,3 +63,14 @@ def test_history_is_included_in_prompt():
     LLMQueryInterpreter(client).interpret("what about the second one?", history=history)
     prompt_text = str(client.calls[0])
     assert "second one" in prompt_text and "tell me about jhana" in prompt_text
+
+
+def test_history_capped_to_last_six_messages():
+    client = FakeLLMClient(['{"intent": "corpus_question", "queries": ["metta"]}'])
+    history = [
+        {"role": "user", "content": f"turn-{i}"} for i in range(8)
+    ]
+    LLMQueryInterpreter(client).interpret("and metta?", history=history)
+    prompt_text = str(client.calls[0])
+    assert "turn-2" in prompt_text and "turn-7" in prompt_text
+    assert "turn-0" not in prompt_text and "turn-1" not in prompt_text

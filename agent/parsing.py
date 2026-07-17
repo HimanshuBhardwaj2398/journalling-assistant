@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+import logging
+from typing import Any, Optional, TypeVar
+
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -48,26 +55,42 @@ def extract_json(text: str) -> dict[str, Any]:
 
 
 def parse_structured_with_retry(
-    client: Any, messages: list[dict], model_cls: Any
-) -> Optional[Any]:
-    """One try + one validation-feedback retry against a Pydantic model.
+    client: Any,  # duck-typed: anything with .complete(messages, max_tokens=...) -> str
+    messages: list[dict],
+    model_cls: type[T],
+    max_tokens: int = 300,
+) -> Optional[T]:
+    """One try + one retry against a Pydantic model.
 
+    Parse/validation failures retry with the error fed back to the model;
+    transport failures (client.complete raising) retry the same messages.
     Shared by the interpreter and the graph nodes (grader). Returns None when
     both attempts fail; callers own the fallback.
     """
     attempt = list(messages)
+    last_exc: Optional[Exception] = None
     for _ in range(2):
-        raw = client.complete(attempt, max_tokens=300)
+        try:
+            raw = client.complete(attempt, max_tokens=max_tokens)
+        except Exception as exc:
+            logger.warning("LLM call failed during structured parse: %s", exc)
+            last_exc = exc
+            attempt = list(messages)  # no assistant reply to feed back
+            continue
         try:
             return model_cls.model_validate(extract_json(raw))
         except Exception as exc:  # ValueError from extract_json or pydantic ValidationError
+            last_exc = exc
+            # first line only: pydantic v2 errors are multiline noise for a small model
+            error_line = (str(exc).splitlines() or [repr(exc)])[0]
             attempt = list(messages) + [
                 {"role": "assistant", "content": raw},
                 {
                     "role": "user",
-                    "content": f"Invalid. Error: {exc}. Reply with ONLY the JSON object.",
+                    "content": f"Invalid. Error: {error_line}. Reply with ONLY the JSON object.",
                 },
             ]
+    logger.warning("structured parse failed after retry: %s", last_exc)
     return None
 
 
