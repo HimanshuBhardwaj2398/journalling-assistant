@@ -43,7 +43,7 @@ into `evals.run` as a strategy (fast follow, separate plan).
   their defaults
 
 #### Fixed
-- Empty-retrieval guard and fresh-results-first context cap in the retrieve/grade nodes
+- Empty-retrieval guard in the answer node; fresh-results-first context cap in the retrieve node
 - Retry helper survives transport errors and accepts `max_tokens`; backfill retrieval
   guarded by interpreted intent
 - Tracer reads `LangfuseSettings` directly, decoupling it from root `Settings` validation
