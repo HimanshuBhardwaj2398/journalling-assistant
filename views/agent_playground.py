@@ -18,6 +18,33 @@ def _agent_deps():
     return build_default_deps()
 
 
+def execute_turn(
+    prompt: str,
+    chat: list[dict[str, str]],
+    run_turn_fn: Any,
+    deps: Any,
+) -> Any:
+    """Run one turn and keep `chat` (Streamlit's persisted transcript)
+    consistent with what actually happened, even on failure.
+
+    Appends the user's message to `chat` immediately, using a snapshot of the
+    prior history (taken before that append) as `run_turn_fn`'s `history=`
+    argument so the new turn isn't duplicated inside the graph's context. On
+    success, appends the assistant's reply and returns the result. On
+    failure, appends an assistant-role entry recording the error and
+    re-raises so the caller can still surface it (e.g. via `st.error`).
+    """
+    history = list(chat)
+    chat.append({"role": "user", "content": prompt})
+    try:
+        result = run_turn_fn(prompt, history=history, deps=deps)
+    except Exception as exc:
+        chat.append({"role": "assistant", "content": f"_Error: {exc}_"})
+        raise
+    chat.append({"role": "assistant", "content": result.text})
+    return result
+
+
 def debug_summary(state: AgentState) -> dict[str, Any]:
     """Pure helper: loop facts for the per-turn debug expander."""
     return {
@@ -40,7 +67,7 @@ def render() -> None:
     )
 
     if "agent_chat" not in st.session_state:
-        st.session_state.agent_chat = []  # [{"role", "content"}] — prior turns only
+        st.session_state.agent_chat = []  # [{"role", "content"}] — full transcript, incl. failed turns
 
     for message in st.session_state.agent_chat:
         with st.chat_message(message["role"]):
@@ -57,8 +84,7 @@ def render() -> None:
 
     with st.chat_message("assistant"), st.spinner("Thinking…"):
         try:
-            # history is PRIOR turns only — the new turn is appended below.
-            result = run_turn(prompt, history=st.session_state.agent_chat, deps=_agent_deps())
+            result = execute_turn(prompt, st.session_state.agent_chat, run_turn, _agent_deps())
         except Exception as exc:
             st.error(f"Agent turn failed: {exc}")
             return
@@ -74,6 +100,3 @@ def render() -> None:
                 for citation in result.citations:
                     st.markdown(f"**{citation.label}** — {citation.source_title or 'unknown'}")
                     st.caption(citation.excerpt)
-
-    st.session_state.agent_chat.append({"role": "user", "content": prompt})
-    st.session_state.agent_chat.append({"role": "assistant", "content": result.text})
