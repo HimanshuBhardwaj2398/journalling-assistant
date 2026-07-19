@@ -64,9 +64,7 @@ def test_run_turn_returns_result_and_opens_root_span():
 
 
 def test_run_turn_passes_history_to_interpreter():
-    interpreter = FakeInterpreter(
-        InterpretedQuery(intent="corpus_question", queries=["q1"])
-    )
+    interpreter = FakeInterpreter(InterpretedQuery(intent="corpus_question", queries=["q1"]))
     deps = make_deps(interpreter=interpreter)
     history = [
         {"role": "user", "content": "tell me about breath meditation"},
@@ -134,12 +132,8 @@ def test_build_default_deps_shares_one_interpreter_client(monkeypatch):
 
     monkeypatch.setattr("agent.service.client_for_role", fake_client_for_role)
     monkeypatch.setattr("agent.service.get_langfuse_tracer", lambda: FakeTracer())
-    monkeypatch.setattr(
-        "agent.service.default_retrievers", lambda: {"hybrid": FakeRetriever({})}
-    )
-    monkeypatch.setattr(
-        "agent.service.GroundedAnswerService", lambda **kwargs: FakeAnswerService()
-    )
+    monkeypatch.setattr("agent.service.default_retrievers", lambda: {"hybrid": FakeRetriever({})})
+    monkeypatch.setattr("agent.service.GroundedAnswerService", lambda **kwargs: FakeAnswerService())
 
     deps = build_default_deps()
 

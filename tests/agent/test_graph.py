@@ -41,19 +41,19 @@ def test_happy_path_answers():
 
 
 def test_direct_path_skips_retrieval():
-    deps = make_deps(
-        interpreter=FakeInterpreter(InterpretedQuery(intent="other", queries=["hi"]))
-    )
+    deps = make_deps(interpreter=FakeInterpreter(InterpretedQuery(intent="other", queries=["hi"])))
     state = invoke(deps, message="hello!")
     assert state.outcome == "direct"
     assert state.retrieved == []
 
 
 def test_rewrite_then_answer():
-    grader = FakeLLMClient([
-        '{"sufficient": false, "missing_info": "wrong vocabulary"}',
-        '{"sufficient": true}',
-    ])
+    grader = FakeLLMClient(
+        [
+            '{"sufficient": false, "missing_info": "wrong vocabulary"}',
+            '{"sufficient": true}',
+        ]
+    )
     retriever = FakeRetriever({"q1": [make_result("u1")], "alt": [make_result("u2")]})
     direct = FakeLLMClient(['{"queries": ["alt"]}'])
     deps = make_deps(grader_client=grader, retrievers={"hybrid": retriever}, direct_client=direct)
@@ -64,10 +64,12 @@ def test_rewrite_then_answer():
 
 
 def test_budget_exhausted_clarifies():
-    grader = FakeLLMClient([
-        '{"sufficient": false, "clarifying_question": "Which text?"}',
-        '{"sufficient": false, "clarifying_question": "Which text?"}',
-    ])
+    grader = FakeLLMClient(
+        [
+            '{"sufficient": false, "clarifying_question": "Which text?"}',
+            '{"sufficient": false, "clarifying_question": "Which text?"}',
+        ]
+    )
     direct = FakeLLMClient(['{"queries": ["alt"]}'])
     deps = make_deps(grader_client=grader, direct_client=direct)
     state = invoke(deps)

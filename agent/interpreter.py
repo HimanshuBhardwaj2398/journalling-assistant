@@ -54,9 +54,7 @@ class LLMQueryInterpreter:
             # Known tradeoff: flattened history could spoof turns via injected
             # "role:" prefixes in content; acceptable v1 blast radius.
             transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history[-6:])
-            messages.append(
-                {"role": "user", "content": f"Conversation so far:\n{transcript}"}
-            )
+            messages.append({"role": "user", "content": f"Conversation so far:\n{transcript}"})
         messages.append({"role": "user", "content": f"User message: {user_message}"})
 
         interpreted = parse_structured_with_retry(self._client, messages, InterpretedQuery)

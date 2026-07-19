@@ -46,10 +46,12 @@ def test_interpret_node_sets_interpreted():
 
 
 def test_retrieve_node_dedupes_across_queries_and_iterations():
-    retriever = FakeRetriever({
-        "q1": [make_result("u1"), make_result("u2")],
-        "q2": [make_result("u2"), make_result("u3")],
-    })
+    retriever = FakeRetriever(
+        {
+            "q1": [make_result("u1"), make_result("u2")],
+            "q2": [make_result("u2"), make_result("u3")],
+        }
+    )
     deps = make_deps(retrievers={"hybrid": retriever})
     state = AgentState(
         user_message="x",
@@ -76,9 +78,13 @@ def test_retrieve_node_respects_strategy_hint():
 
 
 def test_grade_node_parses_verdict():
-    deps = make_deps(grader_client=FakeLLMClient(
-        ['{"sufficient": false, "missing_info": "tradition", "clarifying_question": "Which tradition?"}']
-    ))
+    deps = make_deps(
+        grader_client=FakeLLMClient(
+            [
+                '{"sufficient": false, "missing_info": "tradition", "clarifying_question": "Which tradition?"}'
+            ]
+        )
+    )
     state = AgentState(user_message="x", retrieved=[make_result("u1")])
     update = grade_node(state, deps=deps)
     assert update["grade"].sufficient is False
@@ -170,9 +176,7 @@ def test_retrieve_node_new_results_enter_when_old_fills_cap():
 
 def test_retrieve_node_trims_new_tail_when_new_alone_exceeds_cap():
     retriever = FakeRetriever({"q1": [make_result(f"n{i}") for i in range(4)]})
-    deps = make_deps(
-        retrievers={"hybrid": retriever}, config=AgentConfig(max_context_chunks=2)
-    )
+    deps = make_deps(retrievers={"hybrid": retriever}, config=AgentConfig(max_context_chunks=2))
     state = AgentState(
         user_message="x",
         interpreted=InterpretedQuery(intent="corpus_question", queries=["q1"]),

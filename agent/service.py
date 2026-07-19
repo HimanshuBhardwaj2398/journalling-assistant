@@ -85,8 +85,7 @@ def run_turn(
         # Every terminal node sets an outcome, so None means a wiring bug —
         # log it loudly and degrade to a clarify turn instead of masking it.
         logger.warning(
-            "agent graph finished without an outcome (wiring bug?); "
-            "falling back to clarify"
+            "agent graph finished without an outcome (wiring bug?); falling back to clarify"
         )
         outcome: Outcome = "clarify"
         text = final.final_text or DEFAULT_CLARIFYING_QUESTION

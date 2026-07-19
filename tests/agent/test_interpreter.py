@@ -23,7 +23,9 @@ def test_retries_once_on_bad_json_with_error_feedback():
     assert result.queries == ["metta"]
     assert len(client.calls) == 2
     # retry prompt must carry the parse error back to the model
-    assert "Invalid" in client.calls[1][-1]["content"] or "No JSON" in client.calls[1][-1]["content"]
+    assert (
+        "Invalid" in client.calls[1][-1]["content"] or "No JSON" in client.calls[1][-1]["content"]
+    )
 
 
 def test_falls_back_to_user_message_after_two_failures():
@@ -58,8 +60,10 @@ def test_other_intent_with_empty_queries_stays_empty():
 
 def test_history_is_included_in_prompt():
     client = FakeLLMClient(['{"intent": "corpus_question", "queries": ["second jhana"]}'])
-    history = [{"role": "user", "content": "tell me about jhana"},
-               {"role": "assistant", "content": "Jhana is..."}]
+    history = [
+        {"role": "user", "content": "tell me about jhana"},
+        {"role": "assistant", "content": "Jhana is..."},
+    ]
     LLMQueryInterpreter(client).interpret("what about the second one?", history=history)
     prompt_text = str(client.calls[0])
     assert "second one" in prompt_text and "tell me about jhana" in prompt_text
@@ -67,9 +71,7 @@ def test_history_is_included_in_prompt():
 
 def test_history_capped_to_last_six_messages():
     client = FakeLLMClient(['{"intent": "corpus_question", "queries": ["metta"]}'])
-    history = [
-        {"role": "user", "content": f"turn-{i}"} for i in range(8)
-    ]
+    history = [{"role": "user", "content": f"turn-{i}"} for i in range(8)]
     LLMQueryInterpreter(client).interpret("and metta?", history=history)
     prompt_text = str(client.calls[0])
     assert "turn-2" in prompt_text and "turn-7" in prompt_text

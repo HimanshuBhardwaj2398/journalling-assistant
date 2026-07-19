@@ -50,10 +50,7 @@ def test_two_inline_objects_returns_first():
 
 
 def test_two_fenced_blocks_returns_first():
-    text = (
-        '```json\n{"a": 1}\n```\nAlternatively:\n'
-        '```json\n{"b": 2, "why": "longer"}\n```'
-    )
+    text = '```json\n{"a": 1}\n```\nAlternatively:\n```json\n{"b": 2, "why": "longer"}\n```'
     assert extract_json(text) == {"a": 1}
 
 

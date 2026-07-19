@@ -40,9 +40,7 @@ def _default_settings() -> LLMSettings:
     return LLMSettings(provider="groq")
 
 
-def resolve_role(
-    role: Role, settings: Optional[LLMSettings] = None
-) -> tuple[str, list[str]]:
+def resolve_role(role: Role, settings: Optional[LLMSettings] = None) -> tuple[str, list[str]]:
     """Return (primary_model_id, fallback_model_ids) for a role.
 
     Raises:
@@ -72,6 +70,4 @@ def client_for_role(
     """
     settings = settings or _default_settings()
     primary, fallbacks = resolve_role(role, settings)
-    return LLMClient(
-        settings=settings, tracer=tracer, model_id=primary, fallback_models=fallbacks
-    )
+    return LLMClient(settings=settings, tracer=tracer, model_id=primary, fallback_models=fallbacks)

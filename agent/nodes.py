@@ -60,12 +60,12 @@ class AgentConfig:
 
 @dataclass
 class AgentDeps:
-    interpreter: Any            # QueryInterpreter
-    grader_client: Any          # LLMClient (grader role)
-    direct_client: Any          # LLMClient (interpreter/small role)
-    answer_service: Any         # GroundedAnswerService
+    interpreter: Any  # QueryInterpreter
+    grader_client: Any  # LLMClient (grader role)
+    direct_client: Any  # LLMClient (interpreter/small role)
+    answer_service: Any  # GroundedAnswerService
     retrievers: dict[str, Any]  # registry: name -> Retriever
-    tracer: Any                 # LangfuseTracer (or fake)
+    tracer: Any  # LangfuseTracer (or fake)
     config: AgentConfig = field(default_factory=AgentConfig)
 
     def __post_init__(self) -> None:
@@ -131,9 +131,10 @@ def retrieve_node(state: AgentState, *, deps: AgentDeps) -> dict:
 def grade_node(state: AgentState, *, deps: AgentDeps) -> dict:
     # 1000-char excerpts: corpus min chunk size is 700, so most chunks fit
     # whole; the prompt tells the grader longer ones are truncated previews.
-    excerpts = "\n\n".join(
-        f"[{i + 1}] {r.text[:1000]}" for i, r in enumerate(state.retrieved)
-    ) or "(no chunks retrieved)"
+    excerpts = (
+        "\n\n".join(f"[{i + 1}] {r.text[:1000]}" for i, r in enumerate(state.retrieved))
+        or "(no chunks retrieved)"
+    )
     messages = [
         {"role": "system", "content": GRADER_SYSTEM_PROMPT},
         {
@@ -189,9 +190,7 @@ def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
 
 
 def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
-    with deps.tracer.observe(
-        name="agent.answer", metadata={"chunks": len(state.retrieved)}
-    ) as obs:
+    with deps.tracer.observe(name="agent.answer", metadata={"chunks": len(state.retrieved)}) as obs:
         if not state.retrieved:
             # The grader can hallucinate "sufficient" on empty context, and
             # GroundedAnswerService raises on empty search_results — degrade
@@ -214,7 +213,8 @@ def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
 
 def clarify_node(state: AgentState, *, deps: AgentDeps) -> dict:
     question = (
-        state.grade.clarifying_question if state.grade and state.grade.clarifying_question
+        state.grade.clarifying_question
+        if state.grade and state.grade.clarifying_question
         else DEFAULT_CLARIFYING_QUESTION
     )
     with deps.tracer.observe(name="agent.clarify") as obs:

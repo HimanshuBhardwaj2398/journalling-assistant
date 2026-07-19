@@ -58,5 +58,7 @@ def test_agent_state_defaults():
 
 
 def test_sufficiency_grade_shape():
-    g = SufficiencyGrade(sufficient=False, missing_info="which sutta", clarifying_question="Which text?")
+    g = SufficiencyGrade(
+        sufficient=False, missing_info="which sutta", clarifying_question="Which text?"
+    )
     assert not g.sufficient
