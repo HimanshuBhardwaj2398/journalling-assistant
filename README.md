@@ -1,122 +1,153 @@
 # Meditation Philosophy Database
 
-A semantic search infrastructure for Buddhist scripture and meditation literature, designed to power AI-assisted contemplative practice tools.
+[![Quality](https://github.com/HimanshuBhardwaj2398/meditation-assistant/actions/workflows/quality.yml/badge.svg)](https://github.com/HimanshuBhardwaj2398/meditation-assistant/actions/workflows/quality.yml)
 
-## What It Does
+A RAG knowledge base over the Pali Canon. Ingests Buddhist scripture from
+SuttaCentral's API (plus PDFs and web pages), chunks it along semantic
+boundaries, embeds it into PostgreSQL + pgvector, and serves grounded,
+citation-backed answers. Retrieval is **benchmarked, not guessed** — four
+strategies are compared head-to-head in LLM-judged runs, and every retrieval
+upgrade must beat the incumbent on IR metrics against chunk-level ground
+truth.
 
-Ingests meditation texts (PDFs, URLs), splits them into meaningful semantic chunks, generates vector embeddings, and stores everything in PostgreSQL with pgvector for similarity search.
+![Streamlit UI](docs/images/streamlit-ui.png)
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph sources [Sources]
+        SC[SuttaCentral API]
+        PDF[PDFs via LlamaParse]
+        URL[Web pages]
+    end
+    subgraph pipeline [Ingestion pipeline — DAG of idempotent stages]
+        P[Parsing<br/>strategy-selected parser] --> C[Semantic chunking<br/>bge-small boundary detection]
+        C --> E[Embedding<br/>Voyage voyage-3.5]
+        E --> D[Persistence]
+    end
+    SC & PDF & URL --> P
+    subgraph storage [Neon Postgres]
+        M[(documents + chunks)]
+        V[(pgvector embeddings)]
+        M <-. UUID link .-> V
+    end
+    D --> M & V
+    subgraph query [Query layer]
+        R[RetrievalEngine<br/>similarity · MMR · threshold · hybrid]
+        A[Grounded answering<br/>with citations]
+    end
+    V --> R --> A
+    A -.-> LF[Langfuse tracing]
 ```
-Source Documents → Parsing → Semantic Chunking → Embedding → PostgreSQL + pgvector
-```
 
-**Current source texts**: Pali Canon translations (Dīgha, Majjhima, Saṃyutta, Aṅguttara Nikāya) by Bhikkhu Sujato.
+## Engineering highlights
 
-## Tech Stack
+- **Retrieval evaluation, not vibes** — four strategies (top-k similarity, MMR,
+  score threshold, hybrid Postgres full-text + dense) compared in LLM-judged
+  eval runs, with an approved eval-gated ladder: every retrieval upgrade must
+  beat the incumbent on IR metrics (Recall@5, MRR) against chunk-UUID ground
+  truth.
+  → [evaluation design](docs/plans/2026-07-13-retrieval-eval-strategy-design.md) ·
+  [retrieval/](retrieval/)
+- **Grounded answers with provenance** — every answer cites chunk → document →
+  sutta, with prompt and latency traces attached.
+  → [retrieval/answering.py](retrieval/answering.py)
+- **SuttaCentral segmented-text parser** — SuttaCentral is an SPA, so generic
+  scrapers see an empty shell. This parser reconstructs the site's HTML from
+  bilara translation layers via the public API; a catalog crawler enumerates
+  entire Nikāyas and a batch CLI ingests them with duplicate skipping.
+  → [design doc](docs/plans/2026-07-10-suttacentral-ingestion-design.md) ·
+  [ingestion/suttacentral.py](ingestion/suttacentral.py)
+- **DAG ingestion pipeline** — four idempotent stages (parse → chunk → embed →
+  persist) with dependency resolution; failed ingestions resume from where
+  they stopped. → [ingestion/stages.py](ingestion/stages.py)
+- **Dual-store integrity** — relational metadata and vector rows linked by
+  UUID, with integrity enforced by tests, a validation UI page, and CLI
+  verification scripts. → [db/schema.py](db/schema.py)
+- **Multi-provider LLM client** — one interface over Groq, Ollama (local),
+  and OpenAI via litellm; swap providers with an env var.
+  → [retrieval/llm_client.py](retrieval/llm_client.py)
+- **Design-docs-first process** — features are designed in written docs before
+  implementation; the repo keeps them public.
+  → [docs index](docs/README.md)
 
-| Component | Technology |
-|-----------|------------|
-| Database | PostgreSQL + pgvector |
-| ORM | SQLAlchemy 2.0 + Alembic |
-| Web UI | Streamlit |
-| Embeddings | Voyage AI (`voyage-3.5`) |
-| PDF Parsing | LlamaParse |
-| Chunking | Custom semantic chunker + BAAI/bge-small-en-v1.5 |
-| LLM Framework | LangChain |
+## Quickstart
 
-## Setup
-
-**Prerequisites**: Python 3.11+, PostgreSQL with pgvector, Poetry
+**Prerequisites**: Python 3.11–3.12, Poetry, PostgreSQL with pgvector
+(local Docker or [Neon](https://neon.tech)).
 
 ```bash
 poetry install
-cp .env.example .env   # Then fill in your API keys
-```
-
-**Required environment variables** (see `.env.example`):
-- `DATABASE_URL` — PostgreSQL connection string
-- `VOYAGE_API_KEY` — Voyage AI API key
-- `LLAMAPARSE_API` — LlamaParse API key
-
-**Initialize the database**:
-```bash
+cp .env.example .env        # fill in DB_URL, VOYAGE_API_KEY, LLAMAPARSE_API
 poetry run alembic upgrade head
 ```
 
-## Usage
-
-### Web Interface
+**Web UI** — ingest, monitor, browse, validate:
 
 ```bash
 poetry run streamlit run app.py
 ```
 
-The Streamlit UI provides:
-- **Ingest** — add documents (PDF or URL) with metadata (type, category, tags)
-- **Queue** — monitor processing status in real time
-- **Browse** — filter and explore ingested documents
-- **Document Detail** — browse individual chunks and TOC
-- **Validation** — verify chunk and embedding integrity
-- **Statistics** — corpus overview with charts
-
-See [docs/UI_GUIDE.md](docs/UI_GUIDE.md) for detailed usage.
-
-### CLI
+**CLI**:
 
 ```bash
-# Ingest a PDF
-poetry run python scripts/ingest.py "Books/sutra.pdf" \
-  --title "Diamond Sutra" --type ancient_text --category buddhism
+# Ingest one sutta from SuttaCentral (targets NEON_DIRECT_URL from .env)
+poetry run python scripts/ingest_one.py sc:mn10/sujato
 
-# Ingest from URL
-poetry run python scripts/ingest.py "https://suttacentral.net/dn1"
+# Enumerate whole Nikāyas into data/suttacentral_catalog.jsonl
+poetry run python scripts/build_catalog.py dn mn
 
-# Reprocess an existing document
-poetry run python scripts/ingest.py --resume 5
+# Batch-ingest suttas (skips already-ingested duplicates)
+poetry run python scripts/ingest_batch.py sc:mn1/sujato sc:mn2/sujato
 
-# List all documents
-poetry run python scripts/ingest.py --list
+# Ingest a PDF or URL
+poetry run python scripts/ingest.py "Books/sutra.pdf" --title "Diamond Sutra"
 ```
 
-### Programmatic Access
+**Query** (Python API):
 
 ```python
-from ingestion.orchestrator import IngestionOrchestrator
+from retrieval.query import RetrievalEngine, RetrievalStrategy
 
-orchestrator = IngestionOrchestrator()
-orchestrator.process("path/to/text.pdf")
-orchestrator.process("https://example.com/article")
+engine = RetrievalEngine()
+results = engine.search("what is mindfulness?", strategy=RetrievalStrategy.HYBRID, k=5)
 ```
 
-## Code Quality
+## Corpus
 
-One-time setup after `poetry install` — installs git hooks that lint/format on every commit:
+Pali Canon translations by Bhikkhu Sujato (Creative Commons), ingested from
+SuttaCentral: Dīgha, Majjhima, Saṃyutta, and Aṅguttara Nikāyas. The pipeline
+also accepts arbitrary PDFs and web pages for other contemplative literature.
+
+## Documentation
+
+| Doc | What it covers |
+|-----|----------------|
+| [Architecture](docs/ARCHITECTURE.md) | System design, module map, design decisions |
+| [Docs index](docs/README.md) | Guides, design docs, engineering journal |
+| [UI guide](docs/UI_GUIDE.md) | Streamlit interface walkthrough |
+| [Changelog](docs/CHANGELOG.md) | Release history |
+| [Roadmap](docs/ROADMAP.md) | What's next |
+
+## Development
 
 ```bash
-poetry run pre-commit install
+poetry run pre-commit install     # one-time: lint/format hooks
+poetry run pytest --cov           # 23 test modules
+poetry run ruff check . && poetry run mypy .
+poetry run python scripts/check_doc_links.py   # docs link integrity
 ```
 
-Manual checks:
-
-```bash
-poetry run ruff check .           # Lint
-poetry run ruff format --check .  # Format check
-poetry run mypy .                 # Type check
-poetry run pytest --cov           # Tests with coverage
-```
-
-CI (GitHub Actions, on pushes and PRs to `main`) runs lint, format check, mypy (non-blocking until existing findings are fixed), and the test suite.
-
-Logging is configured centrally in `config/logging_config.py`; entry points call `setup_logging()` once, and the level is controlled by `LOG_LEVEL` in `.env`.
+CI runs lint, format, mypy, and the test suite on every push and PR to `main`.
 
 ## Roadmap
 
-- **Phase 1 (Complete)**: Data ingestion pipeline, semantic chunking, vector storage, Streamlit UI
-- **Phase 2 (In Progress)**: RAG retrieval evaluation, query API with citation tracking
-- **Phase 3 (Planned)**: Application integration — journaling, practice guidance, path exploration
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for details.
+- **Phase 1 — done**: ingestion pipeline, semantic chunking, vector storage, Streamlit UI
+- **Phase 2 — in progress**: retrieval-strategy evaluation, grounded query layer with citations
+- **Phase 3 — planned**: journaling integration, practice guidance, path exploration
 
 ## License
 
-Personal and educational use. Buddhist texts are translations by Bhikkhu Sujato, available under Creative Commons.
+Personal and educational use. Pali Canon translations by Bhikkhu Sujato,
+available under Creative Commons.
