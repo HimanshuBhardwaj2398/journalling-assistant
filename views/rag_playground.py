@@ -32,15 +32,14 @@ def _load_completed_documents() -> list[dict[str, Any]]:
     """Fetch completed documents for optional post-search filtering."""
     with session_scope() as session:
         docs = DocumentCRUD(session).get_documents_by_status(DocumentStatus.COMPLETED)
-
-    return [
-        {
-            "id": int(doc.id),
-            "title": doc.title,
-            "label": f"[{doc.id}] {doc.title}",
-        }
-        for doc in docs
-    ]
+        return [
+            {
+                "id": int(doc.id),
+                "title": doc.title,
+                "label": f"[{doc.id}] {doc.title}",
+            }
+            for doc in docs
+        ]
 
 
 def _inject_styles() -> None:
