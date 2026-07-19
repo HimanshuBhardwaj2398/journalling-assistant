@@ -21,6 +21,7 @@ from typing import Optional
 import litellm
 
 from config.settings import LLMSettings
+from observability.langfuse import LangfuseTracer, get_langfuse_tracer
 
 # Suppress litellm verbose output in notebooks
 litellm.suppress_debug_info = True
@@ -39,11 +40,16 @@ class LLMClient:
     construction reflects the current environment — the seam tests rely on.
     """
 
-    def __init__(self, settings: Optional[LLMSettings] = None) -> None:
+    def __init__(
+        self,
+        settings: Optional[LLMSettings] = None,
+        tracer: Optional[LangfuseTracer] = None,
+    ) -> None:
         settings = settings or LLMSettings()
         self.provider = settings.provider
         model = settings.model or _PROVIDER_DEFAULTS[self.provider]
         self.model_id = f"{self.provider}/{model}"
+        self._tracer = tracer or get_langfuse_tracer()
 
         if self.provider == "ollama":
             # litellm has no per-client base URL; this is process-global state.
@@ -56,13 +62,38 @@ class LLMClient:
         max_tokens: int = 200,
     ) -> str:
         """Call the configured LLM and return the text content."""
-        response = litellm.completion(
-            model=self.model_id,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content.strip()
+        with self._tracer.observe(
+            name="llm.completion",
+            as_type="generation",
+            input=messages,
+            metadata={"model_id": self.model_id},
+        ) as observation:
+            response = litellm.completion(
+                model=self.model_id,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = response.choices[0].message.content.strip()
+
+            usage = getattr(response, "usage", None)
+            usage_details = None
+            if usage is not None:
+                usage_details = {
+                    key: value
+                    for key, value in (
+                        ("input", getattr(usage, "prompt_tokens", None)),
+                        ("output", getattr(usage, "completion_tokens", None)),
+                    )
+                    if value is not None
+                }
+            observation.update(
+                output=text,
+                model=self.model_id,
+                model_parameters={"temperature": temperature, "max_tokens": max_tokens},
+                usage_details=usage_details or None,
+            )
+            return text
 
     def __repr__(self) -> str:
         return f"LLMClient(model={self.model_id!r})"

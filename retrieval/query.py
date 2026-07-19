@@ -258,10 +258,29 @@ class RetrievalEngine:
         ) as observation:
             try:
                 search_fn = strategy_map[strategy]
-                results = search_fn(query, k=k, score_threshold=score_threshold, fetch_k=fetch_k)
+                if strategy == RetrievalStrategy.HYBRID:
+                    # hybrid emits its own semantic/fts/fusion stage spans
+                    results = search_fn(
+                        query, k=k, score_threshold=score_threshold, fetch_k=fetch_k
+                    )
+                else:
+                    with self._tracer.observe(
+                        name="retrieval.semantic",
+                        input={"strategy": strategy.value, "k": k},
+                    ) as stage:
+                        results = search_fn(
+                            query, k=k, score_threshold=score_threshold, fetch_k=fetch_k
+                        )
+                        stage.update(output={"candidates": len(results)})
 
-                # Enrich results with document titles
-                self._enrich_with_document_info(results)
+                with self._tracer.observe(
+                    name="retrieval.enrich",
+                    input={"results": len(results)},
+                ) as stage:
+                    self._enrich_with_document_info(results)
+                    stage.update(
+                        output={"with_titles": sum(1 for r in results if r.source_title)}
+                    )
             except Exception as exc:
                 observation.update(
                     output={"error": str(exc)},
@@ -362,9 +381,14 @@ class RetrievalEngine:
 
     def _hybrid_search(self, query: str, k: int = 5, **kwargs) -> List[SearchResult]:
         """Hybrid FTS + semantic search with reciprocal rank fusion."""
-        semantic_retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
-        semantic_results = semantic_retriever.invoke(query)
-        fts_results = self._fts_search(query, k=k)
+        with self._tracer.observe(name="retrieval.semantic", input={"k": k}) as stage:
+            semantic_retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
+            semantic_results = semantic_retriever.invoke(query)
+            stage.update(output={"candidates": len(semantic_results)})
+
+        with self._tracer.observe(name="retrieval.fts", input={"k": k}) as stage:
+            fts_results = self._fts_search(query, k=k)
+            stage.update(output={"candidates": len(fts_results)})
 
         # Normalize FTS scores before fusion so they're on the same [0,1] scale
         fts_scores = [doc.metadata.get("_fts_score", 0.0) for doc in fts_results]
@@ -373,11 +397,20 @@ class RetrievalEngine:
             for doc, norm_score in zip(fts_results, normed):
                 doc.metadata["_fts_score"] = norm_score
 
-        fused = self._reciprocal_rank_fusion(
-            [semantic_results, fts_results],
-            weights=[0.6, 0.4],
-            k=k,
-        )
+        with self._tracer.observe(
+            name="retrieval.fusion",
+            input={
+                "semantic": len(semantic_results),
+                "fts": len(fts_results),
+                "weights": [0.6, 0.4],
+            },
+        ) as stage:
+            fused = self._reciprocal_rank_fusion(
+                [semantic_results, fts_results],
+                weights=[0.6, 0.4],
+                k=k,
+            )
+            stage.update(output={"candidates": len(fused)})
 
         return [
             SearchResult(

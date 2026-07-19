@@ -3,14 +3,35 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Iterator, Optional
+from typing import Any, Callable, Iterator, Optional, Sequence
 
 from config.settings import LangfuseSettings, get_settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DatasetItemSpec:
+    """SDK-free description of one hosted dataset item (upserted by id)."""
+
+    id: str
+    input: Any
+    expected_output: Any = None
+    metadata: Any = None
+
+
+@dataclass(frozen=True)
+class ExperimentItemOutcome:
+    """SDK-free result of running one dataset item through an experiment."""
+
+    item_id: str
+    output: Any
+    scores: dict[str, float]
+    trace_id: Optional[str] = None
 
 
 @dataclass
@@ -107,6 +128,7 @@ class LangfuseTracer:
     ) -> None:
         self._settings = settings or get_settings().langfuse
         self._client = client if client is not None else self._build_client()
+        self._local = threading.local()  # per-thread span depth for root-only flush
 
     @property
     def enabled(self) -> bool:
@@ -120,23 +142,30 @@ class LangfuseTracer:
         name: str,
         input: Any = None,
         metadata: Optional[dict[str, Any]] = None,
+        as_type: Optional[str] = None,
     ) -> Iterator[LangfuseObservationHandle]:
-        """Create an observation context if Langfuse is configured."""
+        """Create an observation context if Langfuse is configured.
+
+        Nested calls become child spans automatically (OTel context propagation).
+        `as_type="generation"` marks LLM calls so Langfuse tracks model/usage/cost.
+        Only the outermost observation flushes, so per-stage spans stay cheap.
+        """
         if self._client is None:
             yield LangfuseObservationHandle(enabled=False)
             return
 
+        start_kwargs: dict[str, Any] = {"name": name, "input": input, "metadata": metadata}
+        if as_type is not None:
+            start_kwargs["as_type"] = as_type
         try:
-            observation_context = self._client.start_as_current_observation(
-                name=name,
-                input=input,
-                metadata=metadata,
-            )
+            observation_context = self._client.start_as_current_observation(**start_kwargs)
         except Exception as exc:  # pragma: no cover - defensive logging path
             logger.warning("Could not start Langfuse observation '%s': %s", name, exc)
             yield LangfuseObservationHandle(enabled=False)
             return
 
+        depth = getattr(self._local, "depth", 0)
+        self._local.depth = depth + 1
         try:
             with observation_context as observation:
                 handle = LangfuseObservationHandle(
@@ -147,7 +176,120 @@ class LangfuseTracer:
                 handle._refresh_trace_link()
                 yield handle
         finally:
+            self._local.depth = depth
+            if depth == 0:
+                self.flush()
+
+    def sync_dataset(
+        self,
+        *,
+        name: str,
+        items: Sequence[DatasetItemSpec],
+        description: Optional[str] = None,
+    ) -> Optional[int]:
+        """Upsert a hosted dataset from item specs. Returns items synced, None when disabled.
+
+        Items upsert by id, so re-syncing after local edits is idempotent. Per-item
+        failures are logged and skipped — a partial sync is repairable by re-running.
+        """
+        if self._client is None:
+            return None
+
+        try:
+            self._client.create_dataset(name=name, description=description)
+        except Exception as exc:  # dataset may already exist — items are the real work
+            logger.info("create_dataset(%s): %s", name, exc)
+
+        synced = 0
+        for item in items:
+            try:
+                self._client.create_dataset_item(
+                    dataset_name=name,
+                    id=item.id,
+                    input=item.input,
+                    expected_output=item.expected_output,
+                    metadata=item.metadata,
+                )
+                synced += 1
+            except Exception as exc:
+                logger.warning("dataset item %s failed to sync: %s", item.id, exc)
+        return synced
+
+    def run_dataset_experiment(
+        self,
+        *,
+        dataset_name: str,
+        run_name: str,
+        task: Callable[[str, Any], dict],
+        scorer: Callable[[str, Any], dict[str, float]],
+        description: Optional[str] = None,
+        metadata: Optional[dict[str, str]] = None,
+        max_concurrency: int = 4,
+    ) -> Optional[list[ExperimentItemOutcome]]:
+        """Run a dataset experiment on the hosted dataset. None when disabled/failed.
+
+        `task(item_id, input) -> dict` produces the traced output for one item;
+        `scorer(item_id, output) -> {metric: value}` computes its scores. Both are
+        plain callables so callers never touch Langfuse SDK types. The item id is
+        injected into the task output because SDK evaluators don't receive the item.
+        """
+        if self._client is None:
+            return None
+
+        try:
+            from langfuse import Evaluation
+        except ImportError:  # pragma: no cover - guarded by _build_client already
+            return None
+
+        try:
+            dataset = self._client.get_dataset(name=dataset_name)
+        except Exception as exc:
+            logger.warning("get_dataset(%s) failed: %s", dataset_name, exc)
+            return None
+
+        def _task(*, item, **kwargs: Any) -> dict:
+            return {"item_id": item.id, **task(item.id, item.input)}
+
+        def _evaluator(*, output: Any, **kwargs: Any) -> list:
+            try:
+                scores = scorer(output["item_id"], output)
+            except Exception as exc:
+                logger.warning("scorer failed for %s: %s", output.get("item_id"), exc)
+                return []
+            return [Evaluation(name=name, value=value) for name, value in scores.items()]
+
+        try:
+            result = self._client.run_experiment(
+                name=run_name,
+                run_name=run_name,
+                description=description,
+                data=dataset.items,
+                task=_task,
+                evaluators=[_evaluator],
+                metadata=metadata,
+                max_concurrency=max_concurrency,
+            )
+        except Exception as exc:
+            logger.warning("run_experiment(%s) failed: %s", run_name, exc)
+            return None
+        finally:
             self.flush()
+
+        outcomes = []
+        for item_result in result.item_results:
+            output = item_result.output or {}
+            item_id = getattr(item_result.item, "id", None) or output.get("item_id")
+            if item_id is None:
+                continue
+            outcomes.append(
+                ExperimentItemOutcome(
+                    item_id=item_id,
+                    output=output,
+                    scores={e.name: e.value for e in (item_result.evaluations or [])},
+                    trace_id=item_result.trace_id,
+                )
+            )
+        return outcomes
 
     def flush(self) -> None:
         """Flush buffered traces if the client supports it."""
