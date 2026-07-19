@@ -7,11 +7,11 @@ This service should be used for all delete operations to prevent orphaned embedd
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from core.exceptions import CollectionError, DocumentNotFoundError, VectorStoreError
+from config.settings import DatabaseSettings
+from core.exceptions import DocumentNotFoundError, VectorStoreError
 from db.crud import ChunkCRUD, DocumentCRUD, get_all_collections
 from db.database import session_scope
 from db.schema import DocumentStatus
@@ -67,15 +67,10 @@ class CollectionService:
 
         Args:
             collection_name: Name of the vector store collection
-            db_url: Database URL (defaults to DB_URL or DATABASE_URL env var)
+            db_url: Database URL (defaults to database settings)
         """
         self.collection_name = collection_name
-        self.db_url = db_url or os.getenv("DB_URL") or os.getenv("DATABASE_URL")
-
-        if not self.db_url:
-            raise CollectionError(
-                "Database URL required. Set DB_URL or DATABASE_URL environment variable."
-            )
+        self.db_url = db_url or DatabaseSettings().url
 
         self._vector_store_manager: Optional[VectorStoreManager] = None
 

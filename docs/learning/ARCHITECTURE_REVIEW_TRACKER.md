@@ -95,6 +95,13 @@ Light/optional pass: `experiments`, `reports`, `data` (and `Books/`, which is co
 - Completed `retrieval/` (notes below). New backlog items #17–#21.
 - Next: `services/`.
 
+### Session 6 — 2026-07-15
+
+- **Backlog round 2 applied via TDD** on branch `chore/backlog-round-2`: #2, #15 (chars decision), #17 (+ narrow-settings policy + TID251), #18, #19, #20 (doc-level), #21. 136 tests passing (+8), ruff/format clean, mypy 74 vs 75 baseline.
+- **Migration applied to live Neon** (`b7c9d1e3f5a7`): dupe check first (0 dupes on 5 documents), `alembic stamp` baseline (DB had no alembic_version — schema originally from `init_db()`), then upgrade. Verified read-only: both indexes present, tsv 24/24, FTS query returns ranked hits.
+- **Two discoveries**: (a) resolving one settings key via composed `get_settings()` forces validation of *all* groups — hence the narrow-groups policy; the old behavior also hid a test-order dependency (tests passed only because unrelated modules set `DATABASE_URL` at import). (b) `.env`'s `DB_URL` points at the dead Supabase instance — filed as #23 for Himanshu.
+- Next: `services/` review.
+
 ## Strategic Questions (asked session 2, answered with code evidence)
 
 ### 1. Can we host document ingestion somewhere free?
@@ -290,7 +297,7 @@ Findings logged during review; applied only when Himanshu picks them. Ordered by
 | # | Refactor | Where | Effort | Why |
 |---|----------|-------|--------|-----|
 | 1 | ✅ **Applied (session 3)** — commit ownership moved out of CRUD (`flush()` only; `session_scope` owns the commit); call-site audit confirmed all usage already inside scopes; redundant interior `session.commit()` calls removed from `ParsingStage`/orchestrator | `db/crud.py`, `ingestion/stages.py`, `ingestion/orchestrator.py` | Medium | Restores real transactions; prerequisite for atomic enrichment. Contract test: `tests/test_crud_transaction_ownership.py` |
-| 2 | ⏸ **Deferred** — needs a live DB session: dedup-check existing rows first, then Alembic migration | `db/schema.py`, `alembic/` | Small | Dup guard currently advisory + unindexed |
+| 2 | ✅ **Applied (session 6)** — dupe check on live Neon: 0 duplicates; unique index `ix_documents_file_path` created via migration `b7c9d1e3f5a7` and applied; schema.py mirrors it | `db/schema.py`, `alembic/` | Small | DB now enforces the dup guard |
 | 3 | ✅ **Applied (session 3)** — `PipelineContext` is `frozen=True`; `EmbeddingStage` enriches copies instead of mutating shared chunks | `core/interfaces.py`, `ingestion/stages.py` | Small–Medium | Immutability promise now enforced. Contract test: `tests/test_pipeline_context_immutability.py` |
 | 4 | ✅ **Applied (session 4)** — deleted `_get_*` helpers, vestigial `validate_max_size`, `store_chunks`, `serialize_docs`/`deserialize_docs`, `mark_stage_running` (all zero-call-site verified). Kept `clear_chunks` (live) and the `Document.chunks` column (needs a migration to drop) | `config/`, `db/`, `core/`, `ingestion/` | Small | Less to read for future public sharing |
 | 5 | ✅ **Applied (session 4)** — facade now exports the full hierarchy incl. new `VectorStoreError`/`DatabaseConnectionError`. Test: `tests/test_core_exports.py` | `core/__init__.py` | Tiny | One consistent import door |
@@ -303,10 +310,12 @@ Findings logged during review; applied only when Himanshu picks them. Ordered by
 | 12 | ✅ **Applied (session 4)** — `Config.from_settings()` bridges `CHUNKING_*`/`EMBEDDING_HUGGINGFACE_MODEL` into the chunker; orchestrator defaults to it. Tests: `tests/ingestion/test_chunking_config.py` | `ingestion/chunking.py`, orchestrator | Small–Medium | Config that actually configures |
 | 13 | ✅ **Applied (session 4)** — `ingestion/markdown_utils.py:extract_first_h1()`, all 4 call sites converted. Tests: `tests/ingestion/test_markdown_utils.py` | `ingestion/` | Tiny | One implementation |
 | 14 | ⏸ **Deferred** — needs a data-compat plan: langchain-postgres uses a different table layout/driver (psycopg3), so existing embeddings must be verified/migrated against a live DB | `ingestion/embed.py`, `retrieval/query.py` | Medium | Off deprecated API |
-| 15 | ⏸ **Deferred** — behavioral decision needed (fixing units changes chunk boundaries for all future ingests, making corpus inconsistent with existing chunks unless re-chunked). Decide: fix + re-ingest, or document words-as-units | `ingestion/chunking.py` | Small–Medium | Thresholds mean what config says |
+| 15 | ✅ **Applied (session 6)** — Himanshu chose chars; `_combine_small_chunks` measures characters everywhere. Tests: `tests/ingestion/test_chunking_units.py` (cases where words- and chars-interpretations disagree). Existing 5-doc corpus left as-is; re-ingest optional | `ingestion/chunking.py` | Small–Medium | Thresholds mean what config says |
 | 16 | ✅ **Applied (session 4)** | `ingestion/chunking.py` | Tiny | Deprecated pattern |
-| 17 | Route retrieval config through settings: `RetrievalEngine` db_url/collection/model via `get_settings()`; add `LLMSettings` group (provider, model, ollama URL); consider ruff TID251 ban on `os.getenv` outside `config/` | `retrieval/`, `config/settings.py`, `pyproject.toml` | Small–Medium | Boundaries as lint rules, not vigilance |
-| 18 | Remove test-only `_all_chunks` attribute; fix `tests/retrieval/test_query_fts.py:23` to assert behavior, not internals | `retrieval/query.py` | Tiny | No test-shaped warts in production |
-| 19 | FTS performance: generated `tsvector` column + GIN index on `chunks.chunk_text` (Alembic; pair with #2) | `db/schema.py`, `alembic/` | Small–Medium | Hybrid search at 100k-chunk scale |
-| 20 | Score semantics audit: document/normalize per-strategy score meaning (distance vs relevance vs RRF); rename `_bm25_search` → `_fts_search` | `retrieval/query.py` | Small | One field, one meaning |
-| 21 | Drop `rank-bm25` from pyproject (zero imports, verified) | `pyproject.toml` | Tiny | Dead dependency |
+| 17 | ✅ **Applied (session 6)** — `LLMSettings` added; retrieval + services + orchestrator `__main__` all resolve via settings. **Policy established: leaf components read narrow settings groups directly (`DatabaseSettings()`, `ParsingSettings()`, `LLMSettings()`); only composition roots use cached `get_settings()`** — discovered because resolving one key via the composed root forces validation of every group. TID251 ban on `os.getenv` now active in ruff (config/ and scripts/ excepted) | `retrieval/`, `config/`, `pyproject.toml` | Small–Medium | Boundary is now a lint rule |
+| 18 | ✅ **Applied (session 6)** — attribute removed; test now asserts the executed SQL targets `chunk_text_tsv` (behavior, not internals) | `retrieval/query.py` | Tiny | No test-shaped warts |
+| 19 | ✅ **Applied (session 6)** — `chunks.chunk_text_tsv` (GENERATED ALWAYS ... STORED) + GIN index, migration `b7c9d1e3f5a7` applied to Neon (24/24 chunks populated, FTS verified); `_fts_search` queries the column | `db/schema.py`, `alembic/`, `retrieval/query.py` | Small–Medium | Index-backed FTS |
+| 20 | ✅ **Applied (session 6, doc-level)** — per-strategy score semantics documented on `SearchResult.score` (SIMILARITY=distance/lower-better; HYBRID=RRF/higher-better; MMR/THRESHOLD=None); `_bm25_search` renamed `_fts_search`. Normalizing to one scale deferred until a consumer needs it | `retrieval/query.py` | Small | One field, documented meanings |
+| 21 | ✅ **Applied (session 6)** — removed via `poetry remove --lock` | `pyproject.toml` | Tiny | Dead dependency |
+| 22 | Bump transitive `semantic-router` ≥0.1.15 (locked 0.1.12 is yanked re CVE-2026-42208; root litellm pin already blocks the attack vector, so low urgency) | `pyproject.toml` | Tiny | Clean lockfile |
+| 23 | `.env` hygiene: `DB_URL` still points at the decommissioned Supabase instance (connection refused); app-facing URL should move to `NEON_POOLER_URL`'s value. **User action — I don't edit credentials files** | `.env` | Tiny | App config points at a dead DB |

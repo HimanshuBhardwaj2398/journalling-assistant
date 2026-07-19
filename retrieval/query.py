@@ -17,7 +17,6 @@ Usage:
 import enum
 import hashlib
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -28,6 +27,7 @@ from langchain_core.documents import Document
 from langchain_voyageai import VoyageAIEmbeddings
 from sqlalchemy import text
 
+from config.settings import DatabaseSettings, EmbeddingSettings, VectorSettings
 from db.database import session_scope
 from observability.langfuse import LangfuseTracer, get_langfuse_tracer
 
@@ -60,6 +60,10 @@ class SearchResult:
     """
 
     text: str
+    # NOTE score semantics differ per strategy (see backlog #20 audit):
+    #   SIMILARITY → pgvector cosine DISTANCE (lower = more relevant)
+    #   HYBRID     → weighted RRF score (higher = more relevant)
+    #   MMR / THRESHOLD → None (strategies do not surface raw scores)
     score: Optional[float] = None
     chunk_uuid: Optional[str] = None
     document_id: Optional[int] = None
@@ -130,19 +134,21 @@ class RetrievalEngine:
 
     def __init__(
         self,
-        collection_name: str = "buddhist_texts",
+        collection_name: Optional[str] = None,
         db_url: Optional[str] = None,
-        embedding_model: str = "voyage-3.5",
+        embedding_model: Optional[str] = None,
         tracer: Optional[LangfuseTracer] = None,
     ):
-        self._collection_name = collection_name
-        self._db_url = db_url or os.getenv("DB_URL") or os.getenv("DATABASE_URL")
-        self._embedding_model = embedding_model
+        # Unset params resolve from their narrow settings groups (not the
+        # composed get_settings()) so constructing an engine only requires
+        # the configuration it actually uses.
+        self._collection_name = collection_name or VectorSettings().collection_name
+        self._db_url = db_url or DatabaseSettings().url
+        self._embedding_model = embedding_model or EmbeddingSettings().voyage_model
         self._tracer = tracer or get_langfuse_tracer()
 
         # Lazily initialized
         self._vector_store: Optional[PGVector] = None
-        self._all_chunks: None = None  # kept for test assertions; never populated
         self._embeddings: Optional[VoyageAIEmbeddings] = None
 
     # ------------------------------------------------------------------
@@ -167,17 +173,21 @@ class RetrievalEngine:
             logger.info(f"Connected to vector store: {self._collection_name}")
         return self._vector_store
 
-    def _bm25_search(self, query: str, k: int = 5) -> List[Document]:
-        """Full-text search using PostgreSQL tsvector (replaces in-memory BM25)."""
+    def _fts_search(self, query: str, k: int = 5) -> List[Document]:
+        """PostgreSQL full-text search over the generated tsvector column.
+
+        Uses chunks.chunk_text_tsv (GENERATED ALWAYS, GIN-indexed) so queries
+        hit the index instead of recomputing to_tsvector per row.
+        """
         with session_scope() as session:
             result = session.execute(
                 text(
                     """
                     SELECT c.uuid, c.chunk_text, c.chunk_metadata, c.document_id,
-                           ts_rank(to_tsvector('english', c.chunk_text),
+                           ts_rank(c.chunk_text_tsv,
                                    plainto_tsquery('english', :query)) AS fts_score
                     FROM chunks c
-                    WHERE to_tsvector('english', c.chunk_text) @@ plainto_tsquery('english', :query)
+                    WHERE c.chunk_text_tsv @@ plainto_tsquery('english', :query)
                     ORDER BY fts_score DESC
                     LIMIT :k
                     """
@@ -248,10 +258,27 @@ class RetrievalEngine:
         ) as observation:
             try:
                 search_fn = strategy_map[strategy]
-                results = search_fn(query, k=k, score_threshold=score_threshold, fetch_k=fetch_k)
+                if strategy == RetrievalStrategy.HYBRID:
+                    # hybrid emits its own semantic/fts/fusion stage spans
+                    results = search_fn(
+                        query, k=k, score_threshold=score_threshold, fetch_k=fetch_k
+                    )
+                else:
+                    with self._tracer.observe(
+                        name="retrieval.semantic",
+                        input={"strategy": strategy.value, "k": k},
+                    ) as stage:
+                        results = search_fn(
+                            query, k=k, score_threshold=score_threshold, fetch_k=fetch_k
+                        )
+                        stage.update(output={"candidates": len(results)})
 
-                # Enrich results with document titles
-                self._enrich_with_document_info(results)
+                with self._tracer.observe(
+                    name="retrieval.enrich",
+                    input={"results": len(results)},
+                ) as stage:
+                    self._enrich_with_document_info(results)
+                    stage.update(output={"with_titles": sum(1 for r in results if r.source_title)})
             except Exception as exc:
                 observation.update(
                     output={"error": str(exc)},
@@ -352,9 +379,14 @@ class RetrievalEngine:
 
     def _hybrid_search(self, query: str, k: int = 5, **kwargs) -> List[SearchResult]:
         """Hybrid FTS + semantic search with reciprocal rank fusion."""
-        semantic_retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
-        semantic_results = semantic_retriever.invoke(query)
-        fts_results = self._bm25_search(query, k=k)
+        with self._tracer.observe(name="retrieval.semantic", input={"k": k}) as stage:
+            semantic_retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
+            semantic_results = semantic_retriever.invoke(query)
+            stage.update(output={"candidates": len(semantic_results)})
+
+        with self._tracer.observe(name="retrieval.fts", input={"k": k}) as stage:
+            fts_results = self._fts_search(query, k=k)
+            stage.update(output={"candidates": len(fts_results)})
 
         # Normalize FTS scores before fusion so they're on the same [0,1] scale
         fts_scores = [doc.metadata.get("_fts_score", 0.0) for doc in fts_results]
@@ -363,11 +395,20 @@ class RetrievalEngine:
             for doc, norm_score in zip(fts_results, normed):
                 doc.metadata["_fts_score"] = norm_score
 
-        fused = self._reciprocal_rank_fusion(
-            [semantic_results, fts_results],
-            weights=[0.6, 0.4],
-            k=k,
-        )
+        with self._tracer.observe(
+            name="retrieval.fusion",
+            input={
+                "semantic": len(semantic_results),
+                "fts": len(fts_results),
+                "weights": [0.6, 0.4],
+            },
+        ) as stage:
+            fused = self._reciprocal_rank_fusion(
+                [semantic_results, fts_results],
+                weights=[0.6, 0.4],
+                k=k,
+            )
+            stage.update(output={"candidates": len(fused)})
 
         return [
             SearchResult(

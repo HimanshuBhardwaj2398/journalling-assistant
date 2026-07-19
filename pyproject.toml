@@ -40,7 +40,6 @@ markdownify = ">=1.2.0,<2.0.0"
 semantic-chunkers = ">=0.1.1,<0.2.0"
 
 # RAG evaluation
-rank-bm25 = ">=0.2.2,<1.0.0"
 groq = ">=0.9.0,<1.0.0"
 
 # Optional dependencies
@@ -97,11 +96,17 @@ target-version = "py311"
 extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = ["E", "F", "I", "N", "W", "TID251"]
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv" = { msg = "Read configuration via config.settings (narrow settings groups or get_settings()); os.getenv is only allowed inside config/." }
+
 [tool.ruff.lint.per-file-ignores]
-"scripts/*.py" = ["E402"]
+# Entry-point scripts still read deploy-specific vars directly (e.g. NEON_DIRECT_URL).
+"scripts/*.py" = ["E402", "TID251"]
+# config/ IS the boundary — the only place allowed to touch the environment.
+"config/*.py" = ["TID251"]
 
 [tool.mypy]
 python_version = "3.11"

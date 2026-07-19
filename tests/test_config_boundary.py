@@ -51,3 +51,29 @@ def test_get_orchestrator_resolves_url_through_settings(monkeypatch, hermetic_se
     orchestrator = get_orchestrator("some_collection")
 
     assert orchestrator.vector_store_config.db_url == "postgresql://u:p@localhost/svc"
+
+
+def test_retrieval_engine_defaults_resolve_from_settings(monkeypatch, hermetic_settings):
+    monkeypatch.delenv("DB_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/ret")
+    monkeypatch.setenv("VECTOR_COLLECTION_NAME", "custom_coll")
+    monkeypatch.setenv("EMBEDDING_VOYAGE_MODEL", "voyage-custom")
+
+    from retrieval.query import RetrievalEngine
+
+    engine = RetrievalEngine()
+
+    assert engine._db_url == "postgresql://u:p@localhost/ret"
+    assert engine._collection_name == "custom_coll"
+    assert engine._embedding_model == "voyage-custom"
+
+
+def test_collection_service_url_resolves_through_settings(monkeypatch, hermetic_settings):
+    monkeypatch.delenv("DB_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost/cs")
+
+    from services.collection_service import CollectionService
+
+    service = CollectionService()
+
+    assert service.db_url == "postgresql://u:p@localhost/cs"

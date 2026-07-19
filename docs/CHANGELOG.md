@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Retrieval Eval Harness + Observability (2026-07-16)
+
+#### Added
+- `evals/` package: dataset models (two-level ground truth: chunk UUID + sutta UID), IR
+  metrics as pure functions, corpus manifest with re-chunk drift detection, dimension-based
+  synthetic QA generation (persona × question type × register) with binary critics,
+  eval runner, markdown comparison report
+- `retrieval/base.py` + `retrieval/registry.py` — `Retriever` port and strategy registry;
+  every retrieval capability is an adapter, consumed by evals/UI/future API alike
+- Eval dataset hosted on Langfuse (`evals/sync.py`, upsert by row id; JSONL in git stays the
+  source of truth); eval runs logged as Langfuse dataset experiments — one run per strategy,
+  per-row metrics as scores, retriever comparison in the Langfuse datasets UI
+- Per-stage retrieval spans (`semantic`/`fts`/`fusion`/`enrich`) and LLM generation tracing
+  with token usage — all through the single `LangfuseTracer` port
+- Dataset v1 (3 seed + 20 synthetic via gpt-4o-mini) + baseline results for 4 strategies:
+  hybrid wins (MRR 0.557, recall@5 0.857); measured colloquial-vs-canonical vocabulary gap
+  (colloquial MRR 0.41 vs canonical 0.76) confirms query expansion as the Phase-2 priority
+
+#### Fixed
+- Doc-level eval scoring deduplicates document ids (repeated chunks of one document
+  inflated NDCG past 1.0)
 ### RAG Retrieval Evaluation (In Progress)
 - Building evaluation comparing 4 retrieval strategies against the meditation corpus
   - Top-K similarity (dense vector search)

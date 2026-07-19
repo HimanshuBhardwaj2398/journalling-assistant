@@ -1,7 +1,7 @@
 """
 Multi-provider LLM client for retrieval and eval pipelines.
 
-Configure via environment variables:
+Configure via environment variables (see config.settings.LLMSettings):
   LLM_PROVIDER=groq       → groq/llama-3.3-70b-versatile (default)
   LLM_PROVIDER=ollama     → ollama/qwen2.5:7b (local, requires Ollama running)
   LLM_PROVIDER=openai     → openai/gpt-4o-mini
@@ -16,9 +16,12 @@ Usage:
     text = client.complete(messages=[{"role": "user", "content": "..."}])
 """
 
-import os
+from typing import Optional
 
 import litellm
+
+from config.settings import LLMSettings
+from observability.langfuse import LangfuseTracer, get_langfuse_tracer
 
 # Suppress litellm verbose output in notebooks
 litellm.suppress_debug_info = True
@@ -31,20 +34,26 @@ _PROVIDER_DEFAULTS: dict[str, str] = {
 
 
 class LLMClient:
-    """Multi-provider LLM client for retrieval and eval pipelines."""
+    """Multi-provider LLM client for retrieval and eval pipelines.
 
-    def __init__(self) -> None:
-        provider = os.getenv("LLM_PROVIDER", "groq").lower().strip()
-        if provider not in _PROVIDER_DEFAULTS:
-            raise ValueError(
-                f"Unknown LLM_PROVIDER '{provider}'. Must be one of: {list(_PROVIDER_DEFAULTS)}"
-            )
-        model = os.getenv("LLM_MODEL", _PROVIDER_DEFAULTS[provider]).strip()
-        self.model_id = f"{provider}/{model}"
-        self.provider = provider
+    Reads LLMSettings directly (not the cached get_settings()) so each
+    construction reflects the current environment — the seam tests rely on.
+    """
 
-        if provider == "ollama":
-            litellm.api_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    def __init__(
+        self,
+        settings: Optional[LLMSettings] = None,
+        tracer: Optional[LangfuseTracer] = None,
+    ) -> None:
+        settings = settings or LLMSettings()
+        self.provider = settings.provider
+        model = settings.model or _PROVIDER_DEFAULTS[self.provider]
+        self.model_id = f"{self.provider}/{model}"
+        self._tracer = tracer or get_langfuse_tracer()
+
+        if self.provider == "ollama":
+            # litellm has no per-client base URL; this is process-global state.
+            litellm.api_base = settings.ollama_base_url
 
     def complete(
         self,
@@ -53,13 +62,38 @@ class LLMClient:
         max_tokens: int = 200,
     ) -> str:
         """Call the configured LLM and return the text content."""
-        response = litellm.completion(
-            model=self.model_id,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content.strip()
+        with self._tracer.observe(
+            name="llm.completion",
+            as_type="generation",
+            input=messages,
+            metadata={"model_id": self.model_id},
+        ) as observation:
+            response = litellm.completion(
+                model=self.model_id,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = response.choices[0].message.content.strip()
+
+            usage = getattr(response, "usage", None)
+            usage_details = None
+            if usage is not None:
+                usage_details = {
+                    key: value
+                    for key, value in (
+                        ("input", getattr(usage, "prompt_tokens", None)),
+                        ("output", getattr(usage, "completion_tokens", None)),
+                    )
+                    if value is not None
+                }
+            observation.update(
+                output=text,
+                model=self.model_id,
+                model_parameters={"temperature": temperature, "max_tokens": max_tokens},
+                usage_details=usage_details or None,
+            )
+            return text
 
     def __repr__(self) -> str:
         return f"LLMClient(model={self.model_id!r})"

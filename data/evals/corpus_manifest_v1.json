@@ -1,0 +1,147 @@
+{
+  "version": "v1",
+  "created_at": "2026-07-15T19:45:49.458560+00:00",
+  "total_chunks": 124,
+  "documents": [
+    {
+      "document_id": 4,
+      "title": "The Root of All Things",
+      "sutta_uid": "mn1",
+      "chunk_count": 6,
+      "chunk_md5": "006975b20637020f4487056e3fb24a79"
+    },
+    {
+      "document_id": 5,
+      "title": "All the Defilements",
+      "sutta_uid": "mn2",
+      "chunk_count": 6,
+      "chunk_md5": "15df44576b54e4519a0ff9b270bba103"
+    },
+    {
+      "document_id": 6,
+      "title": "Heirs in the Teaching",
+      "sutta_uid": "mn3",
+      "chunk_count": 4,
+      "chunk_md5": "38f9ca9fb29d42106b001385741294c2"
+    },
+    {
+      "document_id": 7,
+      "title": "Fear and Dread",
+      "sutta_uid": "mn4",
+      "chunk_count": 4,
+      "chunk_md5": "34db22966c750ff5acff4cfcaa3b7f80"
+    },
+    {
+      "document_id": 8,
+      "title": "Unblemished",
+      "sutta_uid": "mn5",
+      "chunk_count": 4,
+      "chunk_md5": "743e6ad120725703995f0afa8a2cd572"
+    },
+    {
+      "document_id": 9,
+      "title": "With Poṭṭhapāda",
+      "sutta_uid": "dn9",
+      "chunk_count": 17,
+      "chunk_md5": "976e4c3de6bd1dff83027f21361d54a7"
+    },
+    {
+      "document_id": 10,
+      "title": "One Might Wish",
+      "sutta_uid": "mn6",
+      "chunk_count": 3,
+      "chunk_md5": "d10ecf875085d9aba2391f6592c52567"
+    },
+    {
+      "document_id": 11,
+      "title": "The Simile of the Cloth",
+      "sutta_uid": "mn7",
+      "chunk_count": 3,
+      "chunk_md5": "4d40ae85a2677ac4a48199ed88b9d66c"
+    },
+    {
+      "document_id": 12,
+      "title": "Self-Effacement",
+      "sutta_uid": "mn8",
+      "chunk_count": 6,
+      "chunk_md5": "35ba68e3d159281ce6888c7899a01e03"
+    },
+    {
+      "document_id": 13,
+      "title": "Right View",
+      "sutta_uid": "mn9",
+      "chunk_count": 9,
+      "chunk_md5": "1ab065c53610302acc405a0023bfedc9"
+    },
+    {
+      "document_id": 14,
+      "title": "Mindfulness Meditation",
+      "sutta_uid": "mn10",
+      "chunk_count": 15,
+      "chunk_md5": "a677a949e11f2af2385b7f5eaf881c1a"
+    },
+    {
+      "document_id": 15,
+      "title": "The Longer Discourse on the Lion’s Roar",
+      "sutta_uid": "mn12",
+      "chunk_count": 13,
+      "chunk_md5": "e05d7c448a295faf6cc510488a028ddf"
+    },
+    {
+      "document_id": 16,
+      "title": "The Shorter Discourse on the Lion’s Roar",
+      "sutta_uid": "mn11",
+      "chunk_count": 4,
+      "chunk_md5": "4f8280fb0ca21a71b7fb5ce76178bcb5"
+    },
+    {
+      "document_id": 17,
+      "title": "The Honey-Cake",
+      "sutta_uid": "mn18",
+      "chunk_count": 5,
+      "chunk_md5": "89786207799a2793b974ee18811da14d"
+    },
+    {
+      "document_id": 18,
+      "title": "Jungle Thickets",
+      "sutta_uid": "mn17",
+      "chunk_count": 3,
+      "chunk_md5": "77bb89ca7e116437d58677a6b2570ef1"
+    },
+    {
+      "document_id": 19,
+      "title": "Hard-heartedness",
+      "sutta_uid": "mn16",
+      "chunk_count": 4,
+      "chunk_md5": "52d1b435b17f0e7cd49d2c8f4e6844c2"
+    },
+    {
+      "document_id": 20,
+      "title": "Measuring Up",
+      "sutta_uid": "mn15",
+      "chunk_count": 4,
+      "chunk_md5": "a4f752dee0f128ec21da622870a2d0ec"
+    },
+    {
+      "document_id": 21,
+      "title": "The Shorter Discourse on the Mass of Suffering",
+      "sutta_uid": "mn14",
+      "chunk_count": 5,
+      "chunk_md5": "b014ad2a01b8dfe92ea49612bf00397c"
+    },
+    {
+      "document_id": 22,
+      "title": "Two Kinds of Thought",
+      "sutta_uid": "mn19",
+      "chunk_count": 5,
+      "chunk_md5": "2c3dd520e1a30b19cdb4983e467b5c83"
+    },
+    {
+      "document_id": 23,
+      "title": "How to Stop Thinking",
+      "sutta_uid": "mn20",
+      "chunk_count": 4,
+      "chunk_md5": "03c790654c4e3a4a68bdf51a4997b160"
+    }
+  ]
+}

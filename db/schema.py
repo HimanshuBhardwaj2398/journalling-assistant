@@ -5,13 +5,15 @@ import enum
 from sqlalchemy import (
     BigInteger,
     Column,
+    Computed,
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 
@@ -39,7 +41,13 @@ class Document(Base):
 
     # Source Information
     title = Column(Text, nullable=False)
-    file_path = Column(Text, nullable=True, comment="Original source: URL or file path")
+    file_path = Column(
+        Text,
+        nullable=True,
+        unique=True,
+        index=True,
+        comment="Original source: URL or file path (unique — the DB enforces the dup guard)",
+    )
     description = Column(Text, nullable=True)
 
     # Content
@@ -122,6 +130,12 @@ class Chunk(Base):
 
     # Chunk Content
     chunk_text = Column(Text, nullable=False)
+    chunk_text_tsv = Column(
+        TSVECTOR,
+        Computed("to_tsvector('english', chunk_text)", persisted=True),
+        nullable=True,
+        comment="Generated tsvector powering GIN-indexed full-text search",
+    )
     chunk_index = Column(
         Integer,
         nullable=False,
@@ -141,6 +155,8 @@ class Chunk(Base):
 
     # Relationships
     parent_document = relationship("Document", back_populates="document_chunks")
+
+    __table_args__ = (Index("ix_chunks_chunk_text_tsv", "chunk_text_tsv", postgresql_using="gin"),)
 
     def __repr__(self):
         """Provides a developer-friendly representation of the object."""

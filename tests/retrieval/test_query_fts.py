@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 from retrieval.query import RetrievalEngine
 
 
-def test_bm25_search_uses_sql_not_memory(monkeypatch):
-    """BM25 search should run SQL FTS, not load all chunks into RAM."""
+def test_fts_search_runs_sql_against_tsv_column(monkeypatch):
+    """FTS runs SQL against the generated tsvector column, not in-memory."""
     engine = RetrievalEngine()
 
     mock_session = MagicMock()
@@ -18,6 +18,7 @@ def test_bm25_search_uses_sql_not_memory(monkeypatch):
     with patch("retrieval.query.session_scope") as mock_scope:
         mock_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
         mock_scope.return_value.__exit__ = MagicMock(return_value=False)
-        engine._bm25_search("what is mindfulness", k=3)
+        engine._fts_search("what is mindfulness", k=3)
 
-    assert engine._all_chunks is None  # no in-memory index built
+    executed_sql = str(mock_session.execute.call_args[0][0])
+    assert "chunk_text_tsv" in executed_sql

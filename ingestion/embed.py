@@ -42,9 +42,9 @@ class VectorStoreConfig:
     def __post_init__(self):
         """Resolve the database URL from settings when not passed explicitly."""
         if not self.db_url:
-            from config.settings import get_settings
+            from config.settings import DatabaseSettings
 
-            self.db_url = get_settings().database.url
+            self.db_url = DatabaseSettings().url
 
 
 class VectorStoreManager:

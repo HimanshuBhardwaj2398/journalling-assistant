@@ -135,7 +135,9 @@ class ChunkingSettings(BaseSettings):
     enable_semantic: bool = Field(default=True, description="Enable semantic chunking")
     enable_parallel: bool = Field(default=True, description="Enable parallel processing")
     max_workers: int = Field(default=4, description="Max worker threads for parallel processing")
-    tiny_chunk_threshold: int = Field(default=50, description="Threshold for tiny chunks to merge")
+    tiny_chunk_threshold: int = Field(
+        default=50, description="Chunks under this size (characters) merge into their neighbor"
+    )
 
     def model_post_init(self, __context) -> None:
         """Cross-field invariant, enforced where the fields live."""
@@ -173,6 +175,41 @@ class LangfuseSettings(BaseSettings):
     def is_configured(self) -> bool:
         """Return True when enough configuration is present to send traces."""
         return bool(self.tracing_enabled and self.public_key and self.secret_key)
+
+
+class LLMSettings(BaseSettings):
+    """LLM provider configuration for retrieval and eval pipelines."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="LLM_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    provider: str = Field(
+        default="groq",
+        description="LLM provider: groq, ollama, or openai",
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Override the provider's default model",
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias=AliasChoices("LLM_OLLAMA_BASE_URL", "OLLAMA_BASE_URL"),
+        description="Base URL for a local Ollama server",
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        allowed = ("groq", "ollama", "openai")
+        normalized = v.lower().strip()
+        if normalized not in allowed:
+            raise ValueError(f"Unknown LLM_PROVIDER '{v}'. Must be one of: {list(allowed)}")
+        return normalized
 
 
 class VectorSettings(BaseSettings):
@@ -223,6 +260,7 @@ class Settings(BaseSettings):
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     vector: VectorSettings = Field(default_factory=VectorSettings)
+    llm: LLMSettings = Field(default_factory=LLMSettings)
 
     @field_validator("debug", mode="before")
     @classmethod

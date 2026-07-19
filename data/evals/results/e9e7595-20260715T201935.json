@@ -1,0 +1,1512 @@
+{
+  "git_sha": "e9e7595",
+  "created_at": "2026-07-15T20:19:35.256699+00:00",
+  "dataset": "data/evals/retrieval_v1.jsonl",
+  "dataset_size": 21,
+  "k_values": [
+    5,
+    10
+  ],
+  "strategies": {
+    "similarity": {
+      "overall": {
+        "mrr": 0.5214,
+        "recall@5": 0.8571,
+        "ndcg@5": 0.6064,
+        "hit_rate@5": 0.8571,
+        "recall@10": 0.8571,
+        "ndcg@10": 0.6064,
+        "hit_rate@10": 0.8571
+      },
+      "by_question_type": {
+        "conceptual": {
+          "mrr": 0.5,
+          "recall@5": 1.0,
+          "ndcg@5": 0.6309,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.6309,
+          "hit_rate@10": 1.0
+        },
+        "cross_textual": {
+          "mrr": 0.4,
+          "recall@5": 1.0,
+          "ndcg@5": 0.5496,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.5496,
+          "hit_rate@10": 1.0
+        },
+        "factual": {
+          "mrr": 1.0,
+          "recall@5": 1.0,
+          "ndcg@5": 1.0,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 1.0,
+          "hit_rate@10": 1.0
+        },
+        "pali_specific": {
+          "mrr": 0.25,
+          "recall@5": 1.0,
+          "ndcg@5": 0.4307,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.4307,
+          "hit_rate@10": 1.0
+        },
+        "practical": {
+          "mrr": 0.4615,
+          "recall@5": 0.7692,
+          "ndcg@5": 0.5403,
+          "hit_rate@5": 0.7692,
+          "recall@10": 0.7692,
+          "ndcg@10": 0.5403,
+          "hit_rate@10": 0.7692
+        }
+      },
+      "by_register": {
+        "canonical": {
+          "mrr": 0.6759,
+          "recall@5": 1.0,
+          "ndcg@5": 0.7582,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.7582,
+          "hit_rate@10": 1.0
+        },
+        "colloquial": {
+          "mrr": 0.4056,
+          "recall@5": 0.75,
+          "ndcg@5": 0.4925,
+          "hit_rate@5": 0.75,
+          "recall@10": 0.75,
+          "ndcg@10": 0.4925,
+          "hit_rate@10": 0.75
+        }
+      },
+      "errors": [],
+      "per_row": [
+        {
+          "id": "syn_113",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_103",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_102",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_093",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_092",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_086",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_073",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_063",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_058",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_056",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_049",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_043",
+          "question_type": "factual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_037",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 0.38685280723454163,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.38685280723454163,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_033",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_032",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_030",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_025",
+          "question_type": "pali_specific",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.25,
+            "recall@5": 1.0,
+            "ndcg@5": 0.43067655807339306,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.43067655807339306,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_023",
+          "question_type": "conceptual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_005",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_001",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "seed_002",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        }
+      ]
+    },
+    "mmr": {
+      "overall": {
+        "mrr": 0.4147,
+        "recall@5": 0.5714,
+        "ndcg@5": 0.4502,
+        "hit_rate@5": 0.5714,
+        "recall@10": 0.619,
+        "ndcg@10": 0.4652,
+        "hit_rate@10": 0.619
+      },
+      "by_question_type": {
+        "conceptual": {
+          "mrr": 0.0,
+          "recall@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit_rate@5": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "hit_rate@10": 0.0
+        },
+        "cross_textual": {
+          "mrr": 0.4167,
+          "recall@5": 1.0,
+          "ndcg@5": 0.5642,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.5642,
+          "hit_rate@10": 1.0
+        },
+        "factual": {
+          "mrr": 1.0,
+          "recall@5": 1.0,
+          "ndcg@5": 1.0,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 1.0,
+          "hit_rate@10": 1.0
+        },
+        "pali_specific": {
+          "mrr": 0.3333,
+          "recall@5": 1.0,
+          "ndcg@5": 0.5,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.5,
+          "hit_rate@10": 1.0
+        },
+        "practical": {
+          "mrr": 0.3173,
+          "recall@5": 0.3846,
+          "ndcg@5": 0.3278,
+          "hit_rate@5": 0.3846,
+          "recall@10": 0.4615,
+          "ndcg@10": 0.3521,
+          "hit_rate@10": 0.4615
+        }
+      },
+      "by_register": {
+        "canonical": {
+          "mrr": 0.537,
+          "recall@5": 0.6667,
+          "ndcg@5": 0.5701,
+          "hit_rate@5": 0.6667,
+          "recall@10": 0.6667,
+          "ndcg@10": 0.5701,
+          "hit_rate@10": 0.6667
+        },
+        "colloquial": {
+          "mrr": 0.3229,
+          "recall@5": 0.5,
+          "ndcg@5": 0.3603,
+          "hit_rate@5": 0.5,
+          "recall@10": 0.5833,
+          "ndcg@10": 0.3866,
+          "hit_rate@10": 0.5833
+        }
+      },
+      "errors": [],
+      "per_row": [
+        {
+          "id": "syn_113",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_103",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_102",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_093",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_092",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_086",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_073",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_063",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_058",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_056",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_049",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.125,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.31546487678572877,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_043",
+          "question_type": "factual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_037",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.25,
+            "recall@5": 1.0,
+            "ndcg@5": 0.43067655807339306,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.43067655807339306,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_033",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_032",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_030",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_025",
+          "question_type": "pali_specific",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_023",
+          "question_type": "conceptual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_005",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_001",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "seed_002",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        }
+      ]
+    },
+    "threshold": {
+      "overall": {
+        "mrr": 0.3254,
+        "recall@5": 0.4286,
+        "ndcg@5": 0.352,
+        "hit_rate@5": 0.4286,
+        "recall@10": 0.4286,
+        "ndcg@10": 0.352,
+        "hit_rate@10": 0.4286
+      },
+      "by_question_type": {
+        "conceptual": {
+          "mrr": 0.0,
+          "recall@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit_rate@5": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "hit_rate@10": 0.0
+        },
+        "cross_textual": {
+          "mrr": 0.0,
+          "recall@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit_rate@5": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "hit_rate@10": 0.0
+        },
+        "factual": {
+          "mrr": 1.0,
+          "recall@5": 1.0,
+          "ndcg@5": 1.0,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 1.0,
+          "hit_rate@10": 1.0
+        },
+        "pali_specific": {
+          "mrr": 0.0,
+          "recall@5": 0.0,
+          "ndcg@5": 0.0,
+          "hit_rate@5": 0.0,
+          "recall@10": 0.0,
+          "ndcg@10": 0.0,
+          "hit_rate@10": 0.0
+        },
+        "practical": {
+          "mrr": 0.2949,
+          "recall@5": 0.4615,
+          "ndcg@5": 0.3379,
+          "hit_rate@5": 0.4615,
+          "recall@10": 0.4615,
+          "ndcg@10": 0.3379,
+          "hit_rate@10": 0.4615
+        }
+      },
+      "by_register": {
+        "canonical": {
+          "mrr": 0.5556,
+          "recall@5": 0.6667,
+          "ndcg@5": 0.5847,
+          "hit_rate@5": 0.6667,
+          "recall@10": 0.6667,
+          "ndcg@10": 0.5847,
+          "hit_rate@10": 0.6667
+        },
+        "colloquial": {
+          "mrr": 0.1528,
+          "recall@5": 0.25,
+          "ndcg@5": 0.1776,
+          "hit_rate@5": 0.25,
+          "recall@10": 0.25,
+          "ndcg@10": 0.1776,
+          "hit_rate@10": 0.25
+        }
+      },
+      "errors": [],
+      "per_row": [
+        {
+          "id": "syn_113",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_103",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_102",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_093",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_092",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_086",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_073",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_063",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_058",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_056",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_049",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_043",
+          "question_type": "factual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_037",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_033",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_032",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_030",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_025",
+          "question_type": "pali_specific",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_023",
+          "question_type": "conceptual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_005",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_001",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "seed_002",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        }
+      ]
+    },
+    "hybrid": {
+      "overall": {
+        "mrr": 0.5571,
+        "recall@5": 0.8571,
+        "ndcg@5": 0.6335,
+        "hit_rate@5": 0.8571,
+        "recall@10": 0.8571,
+        "ndcg@10": 0.6335,
+        "hit_rate@10": 0.8571
+      },
+      "by_question_type": {
+        "conceptual": {
+          "mrr": 0.5,
+          "recall@5": 1.0,
+          "ndcg@5": 0.6309,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.6309,
+          "hit_rate@10": 1.0
+        },
+        "cross_textual": {
+          "mrr": 0.4,
+          "recall@5": 1.0,
+          "ndcg@5": 0.5496,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.5496,
+          "hit_rate@10": 1.0
+        },
+        "factual": {
+          "mrr": 1.0,
+          "recall@5": 1.0,
+          "ndcg@5": 1.0,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 1.0,
+          "hit_rate@10": 1.0
+        },
+        "pali_specific": {
+          "mrr": 1.0,
+          "recall@5": 1.0,
+          "ndcg@5": 1.0,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 1.0,
+          "hit_rate@10": 1.0
+        },
+        "practical": {
+          "mrr": 0.4615,
+          "recall@5": 0.7692,
+          "ndcg@5": 0.5403,
+          "hit_rate@5": 0.7692,
+          "recall@10": 0.7692,
+          "ndcg@10": 0.5403,
+          "hit_rate@10": 0.7692
+        }
+      },
+      "by_register": {
+        "canonical": {
+          "mrr": 0.7593,
+          "recall@5": 1.0,
+          "ndcg@5": 0.8214,
+          "hit_rate@5": 1.0,
+          "recall@10": 1.0,
+          "ndcg@10": 0.8214,
+          "hit_rate@10": 1.0
+        },
+        "colloquial": {
+          "mrr": 0.4056,
+          "recall@5": 0.75,
+          "ndcg@5": 0.4925,
+          "hit_rate@5": 0.75,
+          "recall@10": 0.75,
+          "ndcg@10": 0.4925,
+          "hit_rate@10": 0.75
+        }
+      },
+      "errors": [],
+      "per_row": [
+        {
+          "id": "syn_113",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_103",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_102",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_093",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_092",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_086",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_073",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_063",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_058",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_056",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_049",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_043",
+          "question_type": "factual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_037",
+          "question_type": "cross_textual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 0.38685280723454163,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.38685280723454163,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_033",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.3333333333333333,
+            "recall@5": 1.0,
+            "ndcg@5": 0.5,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.5,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_032",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_030",
+          "question_type": "practical",
+          "register": "canonical",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_025",
+          "question_type": "pali_specific",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_023",
+          "question_type": "conceptual",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "syn_005",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.0,
+            "recall@5": 0.0,
+            "ndcg@5": 0.0,
+            "hit_rate@5": 0.0,
+            "recall@10": 0.0,
+            "ndcg@10": 0.0,
+            "hit_rate@10": 0.0
+          }
+        },
+        {
+          "id": "syn_001",
+          "question_type": "practical",
+          "register": "colloquial",
+          "scores": {
+            "mrr": 0.5,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "hit_rate@10": 1.0
+          }
+        },
+        {
+          "id": "seed_002",
+          "question_type": "factual",
+          "register": "canonical",
+          "scores": {
+            "mrr": 1.0,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "hit_rate@5": 1.0,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "hit_rate@10": 1.0
+          }
+        }
+      ]
+    }
+  }
+}

@@ -5,7 +5,6 @@ Replaces linear state machine with dependency-aware stage execution.
 """
 
 import logging
-import os
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -565,10 +564,7 @@ if __name__ == "__main__":
 
     # Create orchestrator
     orchestrator = IngestionOrchestrator(
-        vector_store_config=VectorStoreConfig(
-            collection_name="buddhist_texts",
-            db_url=os.getenv("DATABASE_URL"),
-        )
+        vector_store_config=VectorStoreConfig(collection_name="buddhist_texts")
     )
 
     # Test with a source (update this to a real file path or URL)
