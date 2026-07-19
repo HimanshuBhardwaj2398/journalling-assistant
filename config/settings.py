@@ -202,6 +202,18 @@ class LLMSettings(BaseSettings):
         description="Base URL for a local Ollama server",
     )
 
+    # Agent role→model routing (design: 2026-07-16-agentic-rag-v1). Format
+    # "provider/model", e.g. LLM_ROLE_GRADER=groq/llama-3.1-8b-instant.
+    role_interpreter: Optional[str] = Field(
+        default=None, description="Model id for the query-interpreter role"
+    )
+    role_grader: Optional[str] = Field(
+        default=None, description="Model id for the sufficiency-grader role"
+    )
+    role_answerer: Optional[str] = Field(
+        default=None, description="Model id for the answer-generation role"
+    )
+
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, v: str) -> str:
@@ -209,6 +221,21 @@ class LLMSettings(BaseSettings):
         normalized = v.lower().strip()
         if normalized not in allowed:
             raise ValueError(f"Unknown LLM_PROVIDER '{v}'. Must be one of: {list(allowed)}")
+        return normalized
+
+    @field_validator("role_interpreter", "role_grader", "role_answerer")
+    @classmethod
+    def validate_role_model_id(cls, v: Optional[str]) -> Optional[str]:
+        # A bare model name (no provider prefix) would land off the fallback
+        # ladder and silently get every rung as a fallback — fail loudly here.
+        if v is None:
+            return v
+        normalized = v.strip()
+        if "/" not in normalized:
+            raise ValueError(
+                f"Invalid role model id '{v}'. Expected 'provider/model' format, "
+                "e.g. 'groq/llama-3.3-70b-versatile'."
+            )
         return normalized
 
 

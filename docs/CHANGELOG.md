@@ -8,6 +8,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Agentic RAG v1 (2026-07-19)
+
+**Experimental track** — learning-first, retrieval-only v1 tool scope. The eval gate from
+the retrieval-observability design stands: this agent loop does not replace plain RAG as
+the default until it beats the Phase-2/3 winner on the end-to-end eval sets. Not yet wired
+into `evals.run` as a strategy (fast follow, separate plan).
+
+#### Added
+- `agent/` package: LangGraph orchestration (graph nodes only — LLM calls stay on
+  `LLMClient`) implementing interpret → retrieve → grade → answer/clarify/direct, with a
+  rewrite-and-retry loop capped at 2 iterations
+- `QueryInterpreter` port + small-model implementation, shared retry-parse helper for
+  structured LLM output, tolerant validators/normalization for small-model quirks (intent
+  case, queries field, excerpt fidelity in the grader)
+- Role→model routing (`agent/router.py`): `interpreter`/`grader`/`answerer` roles default to
+  `ollama/qwen3:8b`, `ollama/qwen3:8b`, `groq/llama-3.3-70b-versatile` respectively, each
+  repointable via `LLM_ROLE_<ROLE>` env var; explicit local → Groq → OpenAI fallback ladder
+  (tier map derived from the ladder, validated role-override format)
+- litellm fallback chain support: explicit model override + multi-tier fallback chain with a
+  per-call Ollama `api_base` fix, env-independent explicit chains, and empty-content-triggered
+  escalation
+- `agent/service.py` `run_turn` — turn-level service wrapping the graph with an
+  `agent.turn` root Langfuse span
+- Full tracing through the existing `LangfuseTracer` port: `agent.turn` root span with
+  per-node spans (`agent.interpret`, `agent.retrieve` wrapping the existing per-stage
+  retrieval spans, `agent.grade`, `agent.rewrite`, `agent.answer`), resolved model recorded
+  per generation
+- `views/agent_playground.py` — Streamlit Agent Playground page beside the RAG playground;
+  per-turn loop-debug expander (interpreted query, strategy, grade verdict, iterations,
+  resolved model per role) and grounded-answer citation rendering; failed turns persist to
+  `agent_chat` history
+- `.env.example` — commented `LLM_ROLE_*` block documenting the role-routing env vars and
+  their defaults
+
+#### Fixed
+- Empty-retrieval guard in the answer node; fresh-results-first context cap in the retrieve node
+- Retry helper survives transport errors and accepts `max_tokens`; backfill retrieval
+  guarded by interpreted intent
+- Tracer reads `LangfuseSettings` directly, decoupling it from root `Settings` validation
+  so agent tracing doesn't require the full app config to validate
+
 ### Retrieval Eval Harness + Observability (2026-07-16)
 
 #### Added

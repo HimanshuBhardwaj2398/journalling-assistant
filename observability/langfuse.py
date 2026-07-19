@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, Iterator, Optional, Sequence
 
-from config.settings import LangfuseSettings, get_settings
+from config.settings import LangfuseSettings
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,11 @@ class LangfuseTracer:
         client: Any = None,
         settings: Optional[LangfuseSettings] = None,
     ) -> None:
-        self._settings = settings or get_settings().langfuse
+        # Construct LangfuseSettings directly (LANGFUSE_ env prefix) instead of
+        # going through get_settings(): the root Settings eagerly validates
+        # unrelated sections (e.g. LLM_PROVIDER), which must not be able to
+        # break tracer construction. Same pattern as LLMClient/LLMSettings.
+        self._settings = settings or LangfuseSettings()
         self._client = client if client is not None else self._build_client()
         self._local = threading.local()  # per-thread span depth for root-only flush
 
