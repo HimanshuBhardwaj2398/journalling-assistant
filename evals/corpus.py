@@ -62,9 +62,7 @@ class CorpusManifest(BaseModel):
 def _fetch(session) -> list[ManifestDoc]:
     rows = session.execute(MANIFEST_SQL).fetchall()
     return [
-        ManifestDoc(
-            document_id=r[0], title=r[1], sutta_uid=r[2], chunk_count=r[3], chunk_md5=r[4]
-        )
+        ManifestDoc(document_id=r[0], title=r[1], sutta_uid=r[2], chunk_count=r[3], chunk_md5=r[4])
         for r in rows
     ]
 

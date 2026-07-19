@@ -73,9 +73,7 @@ def main() -> None:  # pragma: no cover - thin CLI; components tested above
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     rows = load_dataset(args.dataset)
-    synced = sync_rows(
-        get_langfuse_tracer(), rows, name=args.name, description=args.description
-    )
+    synced = sync_rows(get_langfuse_tracer(), rows, name=args.name, description=args.description)
     if synced is None:
         raise SystemExit("Langfuse is not configured (LANGFUSE_PUBLIC_KEY/SECRET_KEY)")
     print(f"Synced {synced}/{len(rows)} items -> Langfuse dataset '{args.name}'")

@@ -278,9 +278,7 @@ class RetrievalEngine:
                     input={"results": len(results)},
                 ) as stage:
                     self._enrich_with_document_info(results)
-                    stage.update(
-                        output={"with_titles": sum(1 for r in results if r.source_title)}
-                    )
+                    stage.update(output={"with_titles": sum(1 for r in results if r.source_title)})
             except Exception as exc:
                 observation.update(
                     output={"error": str(exc)},
