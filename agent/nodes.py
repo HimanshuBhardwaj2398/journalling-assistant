@@ -86,47 +86,60 @@ def interpret_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
     return {"interpreted": interpreted}
 
 
-def retrieve_node(state: AgentState, *, deps: AgentDeps) -> dict:
-    interpreted = state.interpreted or InterpretedQuery(queries=[state.user_message])
-    strategy = interpreted.strategy_hint or deps.config.default_strategy
-    retriever = deps.retrievers.get(strategy) or deps.retrievers[deps.config.default_strategy]
+def _interpreted_or_default(state: AgentState) -> InterpretedQuery:
+    """The interpreter's output, or a stand-in wrapping the raw message for
+    states that reached retrieval without interpretation."""
+    return state.interpreted or InterpretedQuery(queries=[state.user_message])
 
-    with deps.tracer.observe(
-        name="agent.retrieve",
-        input=interpreted.queries,
-        metadata={
-            "strategy": retriever.name,
-            "k": deps.config.k,
-            "iterations": state.iterations,
-        },
-    ) as obs:
-        old = list(state.retrieved)
-        seen = {r.chunk_uuid or r.text for r in old}
-        new: list[Any] = []
-        for query in interpreted.queries:
-            for result in retriever.retrieve(query, k=deps.config.k):
-                key = result.chunk_uuid or result.text
-                if key in seen:
-                    continue
-                seen.add(key)
-                new.append(result)
-        # Fresh results get guaranteed entry: the grader judged the old
-        # context insufficient (that is why we are retrieving again), so new
-        # evidence outranks stale slots. Keep all new results up to the cap
-        # (trimming new's own tail if it alone exceeds it) and fill the
-        # remaining slots with old results in their existing order.
-        cap = deps.config.max_context_chunks
-        n_new_unique = len(new)
-        new = new[:cap]
-        merged = old[: cap - len(new)] + new
-        obs.update(
-            output={
-                "chunks": len(merged),
-                "new": n_new_unique,
-                "dropped": len(old) + n_new_unique - len(merged),
-            }
-        )
-        return {"retrieved": merged}
+
+def _retriever_for(state: AgentState, deps: AgentDeps) -> Any:
+    """The hinted retriever, falling back to the configured default.
+
+    Called once to open the span and once in the body; both are dict lookups,
+    so resolving twice is free and keeps the span's metadata honest.
+    """
+    strategy = _interpreted_or_default(state).strategy_hint or deps.config.default_strategy
+    return deps.retrievers.get(strategy) or deps.retrievers[deps.config.default_strategy]
+
+
+@traced(
+    "agent.retrieve",
+    input=lambda s, d: _interpreted_or_default(s).queries,
+    metadata=lambda s, d: {
+        "strategy": _retriever_for(s, d).name,
+        "k": d.config.k,
+        "iterations": s.iterations,
+    },
+)
+def retrieve_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
+    retriever = _retriever_for(state, deps)
+    old = list(state.retrieved)
+    seen = {r.chunk_uuid or r.text for r in old}
+    new: list[Any] = []
+    for query in _interpreted_or_default(state).queries:
+        for result in retriever.retrieve(query, k=deps.config.k):
+            key = result.chunk_uuid or result.text
+            if key in seen:
+                continue
+            seen.add(key)
+            new.append(result)
+    # Fresh results get guaranteed entry: the grader judged the old context
+    # insufficient (that is why we are retrieving again), so new evidence
+    # outranks stale slots. Keep all new results up to the cap (trimming new's
+    # own tail if it alone exceeds it) and fill the remaining slots with old
+    # results in their existing order.
+    cap = deps.config.max_context_chunks
+    n_new_unique = len(new)
+    new = new[:cap]
+    merged = old[: cap - len(new)] + new
+    span.update(
+        output={
+            "chunks": len(merged),
+            "new": n_new_unique,
+            "dropped": len(old) + n_new_unique - len(merged),
+        }
+    )
+    return {"retrieved": merged}
 
 
 def _grader_messages(state: AgentState) -> list[dict[str, str]]:
