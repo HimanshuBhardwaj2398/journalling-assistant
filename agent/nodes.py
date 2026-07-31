@@ -11,6 +11,7 @@ from typing import Any
 
 from agent.parsing import extract_json, parse_structured_with_retry
 from agent.state import AgentState, InterpretedQuery, SufficiencyGrade
+from agent.tracing import Span, traced
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +79,11 @@ class AgentDeps:
             )
 
 
-def interpret_node(state: AgentState, *, deps: AgentDeps) -> dict:
-    with deps.tracer.observe(name="agent.interpret", input=state.user_message) as obs:
-        interpreted = deps.interpreter.interpret(state.user_message, history=state.messages)
-        obs.update(output=interpreted.model_dump())
-        return {"interpreted": interpreted}
+@traced("agent.interpret", input=lambda s, d: s.user_message)
+def interpret_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
+    interpreted = deps.interpreter.interpret(state.user_message, history=state.messages)
+    span.update(output=interpreted.model_dump())
+    return {"interpreted": interpreted}
 
 
 def retrieve_node(state: AgentState, *, deps: AgentDeps) -> dict:
@@ -211,18 +212,19 @@ def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
         }
 
 
-def clarify_node(state: AgentState, *, deps: AgentDeps) -> dict:
+@traced("agent.clarify")
+def clarify_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
     question = (
         state.grade.clarifying_question
         if state.grade and state.grade.clarifying_question
         else DEFAULT_CLARIFYING_QUESTION
     )
-    with deps.tracer.observe(name="agent.clarify") as obs:
-        obs.update(output=question)
-        return {"outcome": "clarify", "final_text": question}
+    span.update(output=question)
+    return {"outcome": "clarify", "final_text": question}
 
 
-def respond_direct_node(state: AgentState, *, deps: AgentDeps) -> dict:
+@traced("agent.respond_direct", input=lambda s, d: s.user_message)
+def respond_direct_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
     # state.messages is PRIOR turns only; the in-flight user_message is
     # appended here. The service layer must not pre-include it in messages.
     messages = [
@@ -230,7 +232,6 @@ def respond_direct_node(state: AgentState, *, deps: AgentDeps) -> dict:
         *state.messages[-4:],
         {"role": "user", "content": state.user_message},
     ]
-    with deps.tracer.observe(name="agent.respond_direct", input=state.user_message) as obs:
-        text = deps.direct_client.complete(messages, max_tokens=150)
-        obs.update(output=text)
-        return {"outcome": "direct", "final_text": text}
+    text = deps.direct_client.complete(messages, max_tokens=150)
+    span.update(output=text)
+    return {"outcome": "direct", "final_text": text}
