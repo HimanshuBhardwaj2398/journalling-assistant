@@ -207,9 +207,7 @@ def rewrite_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
     # see the original tried set. Dedupe in retrieve_node absorbs re-proposals;
     # revisit if traces show wasted iterations.
     return {
-        "interpreted": _interpreted_or_default(state).model_copy(
-            update={"queries": new_queries}
-        ),
+        "interpreted": _interpreted_or_default(state).model_copy(update={"queries": new_queries}),
         "iterations": state.iterations + 1,
     }
 
