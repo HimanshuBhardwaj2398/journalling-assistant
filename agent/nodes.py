@@ -129,31 +129,37 @@ def retrieve_node(state: AgentState, *, deps: AgentDeps) -> dict:
         return {"retrieved": merged}
 
 
-def grade_node(state: AgentState, *, deps: AgentDeps) -> dict:
+def _grader_messages(state: AgentState) -> list[dict[str, str]]:
+    """Grader prompt: the question plus numbered excerpts of what we retrieved."""
     # 1000-char excerpts: corpus min chunk size is 700, so most chunks fit
     # whole; the prompt tells the grader longer ones are truncated previews.
     excerpts = (
         "\n\n".join(f"[{i + 1}] {r.text[:1000]}" for i, r in enumerate(state.retrieved))
         or "(no chunks retrieved)"
     )
-    messages = [
+    return [
         {"role": "system", "content": GRADER_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": f"Question: {state.user_message}\n\nRetrieved chunks:\n{excerpts}",
         },
     ]
-    with deps.tracer.observe(
-        name="agent.grade",
-        input={"chunks": len(state.retrieved)},
-        metadata={"iterations": state.iterations},
-    ) as obs:
-        grade = parse_structured_with_retry(deps.grader_client, messages, SufficiencyGrade)
-        if grade is None:
-            logger.warning("grader failed twice; treating context as insufficient")
-            grade = SufficiencyGrade(sufficient=False, missing_info="grader unavailable")
-        obs.update(output=grade.model_dump())
-        return {"grade": grade}
+
+
+@traced(
+    "agent.grade",
+    input=lambda s, d: {"chunks": len(s.retrieved)},
+    metadata=lambda s, d: {"iterations": s.iterations},
+)
+def grade_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
+    grade = parse_structured_with_retry(
+        deps.grader_client, _grader_messages(state), SufficiencyGrade
+    )
+    if grade is None:
+        logger.warning("grader failed twice; treating context as insufficient")
+        grade = SufficiencyGrade(sufficient=False, missing_info="grader unavailable")
+    span.update(output=grade.model_dump())
+    return {"grade": grade}
 
 
 def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
@@ -190,26 +196,26 @@ def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
         }
 
 
-def answer_node(state: AgentState, *, deps: AgentDeps) -> dict:
-    with deps.tracer.observe(name="agent.answer", metadata={"chunks": len(state.retrieved)}) as obs:
-        if not state.retrieved:
-            # The grader can hallucinate "sufficient" on empty context, and
-            # GroundedAnswerService raises on empty search_results — degrade
-            # to a clarify turn instead of crashing the graph. Guard lives
-            # inside the span so the degradation is visible in Langfuse.
-            logger.warning("answer_node reached with no retrieved chunks; clarifying")
-            obs.update(
-                output=DEFAULT_CLARIFYING_QUESTION,
-                metadata={"degraded": "empty_retrieval"},
-            )
-            return {"outcome": "clarify", "final_text": DEFAULT_CLARIFYING_QUESTION}
-        response = deps.answer_service.answer(state.user_message, state.retrieved)
-        obs.update(output=response.answer)
-        return {
-            "outcome": "answer",
-            "final_text": response.answer,
-            "citations": list(response.citations),
-        }
+@traced("agent.answer", metadata=lambda s, d: {"chunks": len(s.retrieved)})
+def answer_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
+    if not state.retrieved:
+        # The grader can hallucinate "sufficient" on empty context, and
+        # GroundedAnswerService raises on empty search_results — degrade to a
+        # clarify turn instead of crashing the graph. The span records the
+        # degradation so it stays visible in Langfuse.
+        logger.warning("answer_node reached with no retrieved chunks; clarifying")
+        span.update(
+            output=DEFAULT_CLARIFYING_QUESTION,
+            metadata={"degraded": "empty_retrieval"},
+        )
+        return {"outcome": "clarify", "final_text": DEFAULT_CLARIFYING_QUESTION}
+    response = deps.answer_service.answer(state.user_message, state.retrieved)
+    span.update(output=response.answer)
+    return {
+        "outcome": "answer",
+        "final_text": response.answer,
+        "citations": list(response.citations),
+    }
 
 
 @traced("agent.clarify")
