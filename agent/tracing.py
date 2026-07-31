@@ -8,12 +8,15 @@ Langfuse SDK type crosses this module — it only speaks to the port.
 from __future__ import annotations
 
 import functools
+import logging
 from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol
 
 from agent.state import AgentState
 
 if TYPE_CHECKING:  # import-time cycle: nodes.py imports this module
     from agent.nodes import AgentDeps
+
+logger = logging.getLogger(__name__)
 
 
 class Span(Protocol):
@@ -50,20 +53,29 @@ def traced(
     """Open a tracer span around a node and inject the handle as ``span``.
 
     ``input`` and ``metadata`` are evaluated *before* the node runs, so a node
-    that raises mid-body still leaves a span carrying what it was given.
-    Undeclared keys are omitted from the ``observe()`` call rather than passed
-    as None, keeping bare spans bare. Exceptions propagate untouched: the
-    turn-level span in ``service.py`` owns the ERROR marking.
+    that raises mid-body still leaves a span carrying what it was given. If an
+    extractor itself raises, that key is dropped and a warning is logged, but
+    the span still opens — tracing degrades rather than propagating, the same
+    discipline ``LangfuseTracer.observe`` and ``LangfuseObservationHandle.update``
+    (``observability/langfuse.py``) already follow. Undeclared or failed keys
+    are omitted from the ``observe()`` call rather than passed as None, keeping
+    bare spans bare. Exceptions from the node body itself propagate untouched:
+    the turn-level span in ``service.py`` owns the ERROR marking.
     """
 
     def decorate(node: TracedNode) -> Node:
         @functools.wraps(node)
         def wrapper(state: AgentState, *, deps: AgentDeps) -> dict:
             observe_kwargs: dict[str, Any] = {"name": name}
-            if input is not None:
-                observe_kwargs["input"] = input(state, deps)
-            if metadata is not None:
-                observe_kwargs["metadata"] = metadata(state, deps)
+            for key, extractor in (("input", input), ("metadata", metadata)):
+                if extractor is None:
+                    continue
+                try:
+                    observe_kwargs[key] = extractor(state, deps)
+                except Exception as exc:
+                    # Tracing must never break a turn — the tracer port
+                    # degrades the same way. Drop the key, keep the span.
+                    logger.warning("span %r: %s extractor failed: %s", name, key, exc)
             with deps.tracer.observe(**observe_kwargs) as span:
                 return node(state, deps=deps, span=span)
 

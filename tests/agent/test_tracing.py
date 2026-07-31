@@ -13,7 +13,7 @@ from agent.tracing import traced
 from tests.agent.fakes import FakeTracer
 
 
-class Deps:
+class FakeDeps:
     """Minimal stand-in: @traced needs `.tracer` and nothing else."""
 
     def __init__(self, tracer):
@@ -52,7 +52,7 @@ def test_span_opens_before_the_node_body_runs():
         assert tracer.spans[0]["kwargs"]["name"] == "agent.example"
         return {"ok": True}
 
-    assert node(AgentState(user_message="x"), deps=Deps(tracer)) == {"ok": True}
+    assert node(AgentState(user_message="x"), deps=FakeDeps(tracer)) == {"ok": True}
 
 
 def test_undeclared_kwargs_are_omitted():
@@ -62,7 +62,7 @@ def test_undeclared_kwargs_are_omitted():
     def node(state, *, deps, span):
         return {}
 
-    node(AgentState(user_message="x"), deps=Deps(tracer))
+    node(AgentState(user_message="x"), deps=FakeDeps(tracer))
     assert tracer.spans[0]["kwargs"] == {"name": "agent.bare"}
 
 
@@ -77,7 +77,7 @@ def test_extractors_receive_state_and_deps():
     def node(state, *, deps, span):
         return {}
 
-    node(AgentState(user_message="jhana?"), deps=Deps(tracer))
+    node(AgentState(user_message="jhana?"), deps=FakeDeps(tracer))
     assert tracer.spans[0]["kwargs"] == {
         "name": "agent.extract",
         "input": "jhana?",
@@ -93,7 +93,7 @@ def test_node_reports_output_through_the_injected_span():
         span.update(output="done")
         return {}
 
-    node(AgentState(user_message="x"), deps=Deps(tracer))
+    node(AgentState(user_message="x"), deps=FakeDeps(tracer))
     assert tracer.spans[0]["updates"] == [{"output": "done"}]
 
 
@@ -105,11 +105,34 @@ def test_exception_propagates_and_span_still_closes():
         raise RuntimeError("node failed")
 
     with pytest.raises(RuntimeError, match="node failed"):
-        node(AgentState(user_message="x"), deps=Deps(tracer))
+        node(AgentState(user_message="x"), deps=FakeDeps(tracer))
 
     span = tracer.spans[0]
     assert span["kwargs"]["input"] == "x"  # input survived the failure
     assert span["closed"] is True
+
+
+def test_failing_extractor_drops_the_key_but_keeps_the_span():
+    tracer = FakeTracer()
+
+    def bad_input(s, d):
+        raise ValueError("boom")
+
+    @traced(
+        "agent.partial",
+        input=bad_input,
+        metadata=lambda s, d: {"marker": d.marker},
+    )
+    def node(state, *, deps, span):
+        return {"ran": True}
+
+    result = node(AgentState(user_message="x"), deps=FakeDeps(tracer))
+
+    assert result == {"ran": True}
+    assert tracer.spans[0]["kwargs"] == {
+        "name": "agent.partial",
+        "metadata": {"marker": "deps-value"},
+    }
 
 
 def test_wrapped_node_keeps_its_name():
