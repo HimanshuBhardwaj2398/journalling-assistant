@@ -175,38 +175,43 @@ def grade_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
     return {"grade": grade}
 
 
-def rewrite_node(state: AgentState, *, deps: AgentDeps) -> dict:
-    interpreted = state.interpreted or InterpretedQuery(queries=[state.user_message])
+def _rewrite_messages(state: AgentState) -> list[dict[str, str]]:
+    """Rewrite prompt: the question, the queries already tried, what was missing."""
     missing = state.grade.missing_info if state.grade else None
-    messages = [
+    return [
         {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
                 f"Question: {state.user_message}\n"
-                f"Tried queries: {interpreted.queries}\n"
+                f"Tried queries: {_interpreted_or_default(state).queries}\n"
                 f"Missing: {missing or 'unknown'}"
             ),
         },
     ]
-    with deps.tracer.observe(name="agent.rewrite", input=messages[-1]["content"]) as obs:
-        new_queries: list[str] = []
-        try:
-            raw = deps.direct_client.complete(messages, max_tokens=200)
-            parsed = extract_json(raw)
-            new_queries = [q for q in parsed.get("queries", []) if isinstance(q, str)][:2]
-        except Exception as exc:
-            logger.warning("rewrite failed (%s); reusing original question", exc)
-        if not new_queries:
-            new_queries = [state.user_message]
-        obs.update(output=new_queries)
-        # Accepted limitation: replacing queries means a second rewrite does
-        # not see the original tried set. Dedupe in retrieve_node absorbs
-        # re-proposals; revisit if traces show wasted iterations.
-        return {
-            "interpreted": interpreted.model_copy(update={"queries": new_queries}),
-            "iterations": state.iterations + 1,
-        }
+
+
+@traced("agent.rewrite", input=lambda s, d: _rewrite_messages(s)[-1]["content"])
+def rewrite_node(state: AgentState, *, deps: AgentDeps, span: Span) -> dict:
+    new_queries: list[str] = []
+    try:
+        raw = deps.direct_client.complete(_rewrite_messages(state), max_tokens=200)
+        parsed = extract_json(raw)
+        new_queries = [q for q in parsed.get("queries", []) if isinstance(q, str)][:2]
+    except Exception as exc:
+        logger.warning("rewrite failed (%s); reusing original question", exc)
+    if not new_queries:
+        new_queries = [state.user_message]
+    span.update(output=new_queries)
+    # Accepted limitation: replacing queries means a second rewrite does not
+    # see the original tried set. Dedupe in retrieve_node absorbs re-proposals;
+    # revisit if traces show wasted iterations.
+    return {
+        "interpreted": _interpreted_or_default(state).model_copy(
+            update={"queries": new_queries}
+        ),
+        "iterations": state.iterations + 1,
+    }
 
 
 @traced("agent.answer", metadata=lambda s, d: {"chunks": len(s.retrieved)})
