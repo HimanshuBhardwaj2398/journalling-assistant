@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(poetry env *)",
+      "Bash(/Users/chetna/.pyenv/versions/3.12.4/bin/python -m pytest tests/test_crud_transaction_ownership.py tests/test_pipeline_context_immutability.py)",
+      "Bash(git checkout *)",
+      "Bash(git rebase *)",
+      "Bash(git stash *)",
+      "Bash(git -C /Users/chetna/Desktop/self-projects/meditation-assistant log --oneline -15)",
+      "WebFetch(domain:hamel.dev)"
+    ]
+  }
+}
