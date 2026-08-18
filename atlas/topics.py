@@ -115,7 +115,9 @@ def _ask(client, words: list[str], passage: str) -> Optional[dict]:
         # Reasoning models spend tokens before the JSON, so leave generous headroom;
         # a truncated reply is unparseable and costs a whole label.
         reply = client.complete([{"role": "user", "content": prompt}], max_tokens=800)
-        return json.loads(reply)
+        label = json.loads(reply)
+        # Valid JSON is not necessarily an object — a bare list or string is unusable.
+        return label if isinstance(label, dict) else None
     except Exception as error:
         logger.warning("No model label for a cluster, using its terms instead: %s", error)
         return None

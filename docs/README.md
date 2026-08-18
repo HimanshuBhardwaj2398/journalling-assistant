@@ -17,6 +17,7 @@ the real working documents, published as-is:
 
 | Design | What it decided |
 |--------|-----------------|
+| [Embedding atlas](plans/2026-08-16-embedding-atlas-design.md) | Mapping the chunk embedding distribution — anisotropy, pericope structure, and whether the corpus clusters at all — as insight only, with any retrieval consequence deferred to the eval gate |
 | [Retrieval evaluation strategy](plans/2026-07-13-retrieval-eval-strategy-design.md) | An eval-gated capability ladder: every retrieval upgrade — hybrid tuning, enrichment, agentic — is an adapter that must beat a fixed IR-metric harness before it ships |
 | [SuttaCentral ingestion](plans/2026-07-10-suttacentral-ingestion-design.md) | Cataloging every early Buddhist text on SuttaCentral, then ingesting suttas as reconstructed HTML from bilara layers via the official API |
 | [Architecture hardening](plans/2026-07-10-architecture-hardening-retrieval-foundations-design.md) | Injectable database, Unit-of-Work transaction ownership, and retrieval as ports and adapters |

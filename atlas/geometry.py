@@ -39,7 +39,7 @@ def centre(vectors: np.ndarray) -> np.ndarray:
     (Mu & Viswanath 2018, "All-but-the-Top".)
     """
     centred = vectors - vectors.mean(axis=0)
-    return centred / np.linalg.norm(centred, axis=1, keepdims=True)
+    return np.asarray(centred / np.linalg.norm(centred, axis=1, keepdims=True))
 
 
 def cosine_distributions(

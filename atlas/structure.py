@@ -14,9 +14,10 @@ def project(vectors: np.ndarray, n_neighbors: int = 15, seed: int = 42) -> np.nd
     """
     import umap  # imported lazily; numba compilation makes this slow to import
 
-    return umap.UMAP(
+    layout = umap.UMAP(
         n_neighbors=n_neighbors, min_dist=0.1, metric="cosine", random_state=seed
     ).fit_transform(vectors)
+    return np.asarray(layout)
 
 
 def cluster(vectors: np.ndarray, min_cluster_size: int = 15) -> np.ndarray:
@@ -28,9 +29,8 @@ def cluster(vectors: np.ndarray, min_cluster_size: int = 15) -> np.ndarray:
     copy=True is explicit because vectors is the shared cached matrix every other
     module reads, and the sklearn default is due to flip in 1.10.
     """
-    return HDBSCAN(min_cluster_size=min_cluster_size, metric="euclidean", copy=True).fit_predict(
-        vectors
-    )
+    found = HDBSCAN(min_cluster_size=min_cluster_size, metric="euclidean", copy=True)
+    return np.asarray(found.fit_predict(vectors))
 
 
 def centroids(vectors: np.ndarray, labels: np.ndarray) -> tuple[list[int], np.ndarray]:

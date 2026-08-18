@@ -1,5 +1,7 @@
 """Topic tests: distinguishing terms, and labels that degrade instead of crashing."""
 
+import json
+
 import numpy as np
 
 from atlas.topics import CANON_STOPWORDS, ctfidf_terms, label_clusters
@@ -106,3 +108,21 @@ def test_a_failed_label_is_not_cached(tmp_path):
 
     assert working.calls == 1, "should have retried rather than served a cached fallback"
     assert second[0]["name"] == "Jhana"
+
+
+def test_valid_json_that_is_not_an_object_falls_back(tmp_path):
+    """The model can return well-formed JSON that is still unusable as a label."""
+    client = FakeClient(reply='["jhana", "absorption"]')
+
+    labels = label_clusters(
+        {0: ["jhana", "absorption"]},
+        {0: "t"},
+        {0: ["a"]},
+        client=client,
+        cache_path=tmp_path / "labels.json",
+    )
+
+    assert labels[0]["name"] == "jhana, absorption"
+    assert not (tmp_path / "labels.json").exists() or not json.loads(
+        (tmp_path / "labels.json").read_text()
+    )
