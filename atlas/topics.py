@@ -90,7 +90,12 @@ def label_clusters(
     for cluster_id, words in terms.items():
         key = hashlib.md5(",".join(sorted(member_uuids[cluster_id])).encode()).hexdigest()
         if key not in cache:
-            cache[key] = _ask(client, words, passages.get(cluster_id, ""))
+            label = _ask(client, words, passages.get(cluster_id, ""))
+            if label is None:
+                # A model outage is transient; caching the fallback would make it permanent.
+                out[cluster_id] = _from_terms(words)
+                continue
+            cache[key] = label
         out[cluster_id] = cache[key]
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,11 +103,19 @@ def label_clusters(
     return out
 
 
-def _ask(client, words: list[str], passage: str) -> dict:
-    """Label from the model, falling back to the terms themselves on any failure."""
+def _from_terms(words: list[str]) -> dict:
+    """Stand-in label built from the cluster's own vocabulary."""
+    return {"name": ", ".join(words[:2]), "gloss": ""}
+
+
+def _ask(client, words: list[str], passage: str) -> Optional[dict]:
+    """Label from the model, or None if it could not produce one."""
     prompt = PROMPT.format(terms=", ".join(words), passage=passage[:1500])
     try:
-        return json.loads(client.complete([{"role": "user", "content": prompt}]))
+        # Reasoning models spend tokens before the JSON, so leave generous headroom;
+        # a truncated reply is unparseable and costs a whole label.
+        reply = client.complete([{"role": "user", "content": prompt}], max_tokens=800)
+        return json.loads(reply)
     except Exception as error:
-        logger.warning("Falling back to c-TF-IDF terms for a cluster label: %s", error)
-        return {"name": ", ".join(words[:2]), "gloss": ""}
+        logger.warning("No model label for a cluster, using its terms instead: %s", error)
+        return None

@@ -87,3 +87,22 @@ def test_label_falls_back_to_terms_when_the_model_fails(tmp_path):
     )
 
     assert labels[0]["name"] == "jhana, absorption"
+
+
+def test_a_failed_label_is_not_cached(tmp_path):
+    """A transient outage must not poison the cache with a fallback label."""
+    cache = tmp_path / "labels.json"
+    failing = FakeClient(reply=RuntimeError("provider down"))
+
+    first = label_clusters(
+        {0: ["jhana", "x"]}, {0: "t"}, {0: ["a"]}, client=failing, cache_path=cache
+    )
+    assert first[0]["name"] == "jhana, x"
+
+    working = FakeClient()
+    second = label_clusters(
+        {0: ["jhana", "x"]}, {0: "t"}, {0: ["a"]}, client=working, cache_path=cache
+    )
+
+    assert working.calls == 1, "should have retried rather than served a cached fallback"
+    assert second[0]["name"] == "Jhana"
