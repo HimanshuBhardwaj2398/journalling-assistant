@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -17,8 +16,8 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-from config.settings import VectorSettings
-from core.exceptions import CollectionError
+from config.settings import DatabaseSettings, VectorSettings
+from core.exceptions import CollectionError, DatabaseConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,14 @@ def rows_to_frame(rows: Sequence[tuple]) -> tuple[np.ndarray, pd.DataFrame]:
 
 
 def _engine():
-    url = os.environ["NEON_DIRECT_URL"]
+    """Read-only engine over the configured database.
+
+    DatabaseSettings loads .env itself and resolves to the pooled endpoint,
+    which is what bulk analytical reads should use.
+    """
+    url = DatabaseSettings().url
+    if not url:
+        raise DatabaseConnectionError("No database URL configured — set DB_URL or DATABASE_URL.")
     return create_engine(url.replace("postgresql://", "postgresql+psycopg2://", 1))
 
 

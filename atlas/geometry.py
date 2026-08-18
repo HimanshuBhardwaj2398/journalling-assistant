@@ -30,6 +30,18 @@ def anisotropy(vectors: np.ndarray) -> dict:
     }
 
 
+def centre(vectors: np.ndarray) -> np.ndarray:
+    """Strip the shared direction and return to the unit sphere.
+
+    Embedding spaces concentrate in a narrow cone, and that common component
+    is the same in every vector, so it carries no information while dominating
+    every similarity score. Removing it leaves the part that discriminates.
+    (Mu & Viswanath 2018, "All-but-the-Top".)
+    """
+    centred = vectors - vectors.mean(axis=0)
+    return centred / np.linalg.norm(centred, axis=1, keepdims=True)
+
+
 def cosine_distributions(
     vectors: np.ndarray, df: pd.DataFrame, sample: int = 200_000, seed: int = 0
 ) -> pd.DataFrame:

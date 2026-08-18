@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from atlas.geometry import anisotropy, cosine_distributions, hubness, pca_curve
+from atlas.geometry import anisotropy, centre, cosine_distributions, hubness, pca_curve
 
 
 def _unit(vectors):
@@ -83,3 +83,35 @@ def test_hubness_finds_a_point_sitting_on_the_cloud_axis():
 
     assert counts[0] >= 2 * counts.mean()
     assert (counts > counts[0]).sum() < 3
+
+
+def test_centring_removes_the_common_direction():
+    rng = np.random.default_rng(0)
+    direction = np.zeros((200, 32), dtype=np.float32)
+    direction[:, 0] = 1.0
+    vectors = _unit(direction + 0.3 * rng.standard_normal((200, 32)).astype(np.float32))
+
+    centred = centre(vectors)
+
+    # sigma=0.3 at d=32 gives 1/(1 + 0.09*32) ~= 0.26, plainly anisotropic.
+    assert anisotropy(vectors)["mean_pairwise_cosine"] > 0.2
+    assert abs(anisotropy(centred)["mean_pairwise_cosine"]) < 0.05
+    np.testing.assert_allclose(np.linalg.norm(centred, axis=1), 1.0, rtol=1e-5)
+
+
+def test_centring_preserves_relative_structure():
+    """Two tight groups must stay separable after the common component goes."""
+    rng = np.random.default_rng(0)
+    base = np.zeros((100, 16), dtype=np.float32)
+    base[:, 0] = 1.0
+    base[50:, 1] = 0.4
+    vectors = _unit(base + 0.05 * rng.standard_normal((100, 16)).astype(np.float32))
+
+    centred = centre(vectors)
+    first_centre = centred[:50].mean(axis=0)
+    second_centre = centred[50:].mean(axis=0)
+
+    within = float((centred[:50] @ first_centre).mean())
+    across = float((centred[:50] @ second_centre).mean())
+
+    assert within > across
