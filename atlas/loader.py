@@ -1,0 +1,129 @@
+"""Load chunk embeddings and metadata from Postgres, cached to disk.
+
+pgvector renders a vector as ``[0.1,-0.2,...]`` over a raw query, which arrives
+as a str and happens to be valid JSON — so json.loads is the whole parser.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Iterable, Sequence
+
+import numpy as np
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+from config.settings import VectorSettings
+from core.exceptions import CollectionError
+
+logger = logging.getLogger(__name__)
+
+CACHE_DIR = Path("data/atlas")
+
+COLUMNS = [
+    "uuid",
+    "chunk_text",
+    "embedding",
+    "sutta_uid",
+    "nikaya",
+    "doc_title",
+    "word_count",
+    "chunk_index",
+]
+
+QUERY = text(
+    """
+    SELECT e.cmetadata->>'uuid'              AS uuid,
+           e.document                        AS chunk_text,
+           e.embedding::text                 AS embedding,
+           e.cmetadata->>'uid'               AS sutta_uid,
+           e.cmetadata->>'nikaya'            AS nikaya,
+           e.cmetadata->>'doc_title'         AS doc_title,
+           (e.cmetadata->>'word_count')::int AS word_count,
+           c.chunk_index                     AS chunk_index
+      FROM langchain_pg_embedding e
+      JOIN langchain_pg_collection col ON col.uuid = e.collection_id
+      JOIN chunks c ON c.uuid = e.cmetadata->>'uuid'
+     WHERE col.name = :collection
+     ORDER BY e.cmetadata->>'uuid'
+    """
+)
+
+UUIDS_QUERY = text(
+    """
+    SELECT e.cmetadata->>'uuid'
+      FROM langchain_pg_embedding e
+      JOIN langchain_pg_collection col ON col.uuid = e.collection_id
+     WHERE col.name = :collection
+    """
+)
+
+
+def fingerprint(uuids: Iterable[str]) -> str:
+    """Stable id for a corpus snapshot: row count plus md5 of the sorted uuids."""
+    uuids = sorted(uuids)
+    return f"{len(uuids)}-{hashlib.md5(','.join(uuids).encode()).hexdigest()}"
+
+
+def rows_to_frame(rows: Sequence[tuple]) -> tuple[np.ndarray, pd.DataFrame]:
+    """Split query rows into a (n, dim) matrix and a metadata frame."""
+    if not rows:
+        raise CollectionError(
+            "No embeddings found for this collection. Check VECTOR_COLLECTION_NAME — "
+            "'meditation_chunks' exists but is empty; the data is in 'buddhist_texts'."
+        )
+    df = pd.DataFrame(rows, columns=COLUMNS)
+    vectors = np.array([json.loads(v) for v in df.pop("embedding")], dtype=np.float32)
+    return vectors, df
+
+
+def _engine():
+    url = os.environ["NEON_DIRECT_URL"]
+    return create_engine(url.replace("postgresql://", "postgresql+psycopg2://", 1))
+
+
+def fetch() -> tuple[np.ndarray, pd.DataFrame]:
+    """Read the configured collection straight from Postgres."""
+    collection = VectorSettings().collection_name
+    with _engine().connect() as conn:
+        rows = conn.execute(QUERY, {"collection": collection}).fetchall()
+    logger.info("Loaded %d chunks from collection %s", len(rows), collection)
+    return rows_to_frame(rows)
+
+
+def load(refresh: bool = False) -> tuple[np.ndarray, pd.DataFrame]:
+    """Vectors and metadata, served from data/atlas/ unless refresh is asked for."""
+    vectors, meta = CACHE_DIR / "vectors.npy", CACHE_DIR / "meta.parquet"
+
+    if not refresh and vectors.exists() and meta.exists():
+        return np.load(vectors), pd.read_parquet(meta)
+
+    vectors, df = fetch()
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(vectors, vectors)
+    df.to_parquet(meta)
+    (CACHE_DIR / "fingerprint.json").write_text(json.dumps({"corpus": fingerprint(df["uuid"])}))
+    return vectors, df
+
+
+def check_drift() -> bool:
+    """True when the cache still matches the database. Cheap: uuids only."""
+    stamp = CACHE_DIR / "fingerprint.json"
+    if not stamp.exists():
+        return True
+
+    collection = VectorSettings().collection_name
+    with _engine().connect() as conn:
+        live = conn.execute(UUIDS_QUERY, {"collection": collection}).scalars().all()
+
+    cached = json.loads(stamp.read_text())["corpus"]
+    if fingerprint(live) == cached:
+        return True
+    logger.warning(
+        "Atlas cache is stale (%s -> %s). Call load(refresh=True).", cached, fingerprint(live)
+    )
+    return False
