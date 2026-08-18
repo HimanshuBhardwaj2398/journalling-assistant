@@ -95,24 +95,25 @@ def fetch() -> tuple[np.ndarray, pd.DataFrame]:
     return rows_to_frame(rows)
 
 
-def load(refresh: bool = False) -> tuple[np.ndarray, pd.DataFrame]:
-    """Vectors and metadata, served from data/atlas/ unless refresh is asked for."""
-    vectors, meta = CACHE_DIR / "vectors.npy", CACHE_DIR / "meta.parquet"
+def load(refresh: bool = False, cache_dir: Path = CACHE_DIR) -> tuple[np.ndarray, pd.DataFrame]:
+    """Vectors and metadata, served from the cache unless refresh is asked for."""
+    vectors_path = cache_dir / "vectors.npy"
+    meta_path = cache_dir / "meta.parquet"
 
-    if not refresh and vectors.exists() and meta.exists():
-        return np.load(vectors), pd.read_parquet(meta)
+    if not refresh and vectors_path.exists() and meta_path.exists():
+        return np.load(vectors_path), pd.read_parquet(meta_path)
 
     vectors, df = fetch()
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    np.save(vectors, vectors)
-    df.to_parquet(meta)
-    (CACHE_DIR / "fingerprint.json").write_text(json.dumps({"corpus": fingerprint(df["uuid"])}))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    np.save(vectors_path, vectors)
+    df.to_parquet(meta_path)
+    (cache_dir / "fingerprint.json").write_text(json.dumps({"corpus": fingerprint(df["uuid"])}))
     return vectors, df
 
 
-def check_drift() -> bool:
+def check_drift(cache_dir: Path = CACHE_DIR) -> bool:
     """True when the cache still matches the database. Cheap: uuids only."""
-    stamp = CACHE_DIR / "fingerprint.json"
+    stamp = cache_dir / "fingerprint.json"
     if not stamp.exists():
         return True
 
