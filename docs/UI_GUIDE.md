@@ -279,7 +279,7 @@ streamlit run app.py --server.port 8502
 
 ```bash
 # Make sure you're in the project root
-pwd  # Should show .../meditation-database
+pwd  # Should show .../meditation-assistant
 
 # Check environment variables are set
 cat .env
