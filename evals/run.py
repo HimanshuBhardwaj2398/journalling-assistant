@@ -22,7 +22,7 @@ import json
 import logging
 import statistics
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -67,6 +67,15 @@ def merge_multi_query(per_query_results: list[list], cap: int) -> list:
 
     Mirrors agent/nodes.py::retrieve_node deliberately: an eval with its own
     merge semantics stops predicting production behavior.
+
+    ``cap`` is the METRIC budget — pass ``max(k_values)``, not the agent's
+    ``max_context_chunks``. They differ (8 vs 10 at current settings), and
+    capping at the agent's context size would score recall@10 over 8 results
+    and understate it. The dedup key and ordering mirror the agent; the cap
+    answers to the metric. Do not "correct" this to max_context_chunks.
+
+    Returns copies: renumbering is this function's own addition (retrieve_node
+    never renumbers), so it must not reach back and mutate a caller's results.
     """
     seen: set = set()
     merged: list = []
@@ -77,10 +86,7 @@ def merge_multi_query(per_query_results: list[list], cap: int) -> list:
                 continue
             seen.add(key)
             merged.append(result)
-    merged = merged[:cap]
-    for rank, result in enumerate(merged, start=1):
-        result.rank = rank
-    return merged
+    return [replace(result, rank=rank) for rank, result in enumerate(merged[:cap], start=1)]
 
 
 def score_output(row: EvalRow, retrieved: list[dict], k_values: list[int]) -> dict[str, float]:

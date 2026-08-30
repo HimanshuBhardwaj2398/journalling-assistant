@@ -170,3 +170,12 @@ def test_merge_falls_back_to_text_when_uuid_missing():
 
 def test_merge_handles_no_queries():
     assert merge_multi_query([], cap=5) == []
+
+
+def test_merge_does_not_mutate_the_callers_results():
+    # Renumbering is the eval's own addition, not something retrieve_node does.
+    # A retriever that returns cached or shared objects (FakeRetriever does)
+    # would otherwise leak one arm's ranks into the next arm's audit output.
+    original = _res("u1", 1, 7)
+    merge_multi_query([[original]], cap=10)
+    assert original.rank == 7
