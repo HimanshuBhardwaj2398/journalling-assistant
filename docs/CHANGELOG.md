@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Groq default model swap (2026-08-19)
+
+#### Changed
+- Groq default model moved from `llama-3.3-70b-versatile` to `openai/gpt-oss-120b`,
+  and the documented fast/cheap Groq override from `llama-3.1-8b-instant` to
+  `openai/gpt-oss-20b`. Groq announced both Llama models' deprecation on 2026-06-17
+  and stopped serving them on 2026-08-16 — requests now return
+  `model_not_found`. `openai/gpt-oss-120b` is Groq's recommended replacement
+  (131K context, $0.15/$0.60 per 1M tokens vs `qwen/qwen3.6-27b` at $0.60/$3.00).
+  Touches `_PROVIDER_DEFAULTS["groq"]` (`retrieval/llm_client.py`), the `answerer`
+  role default and Groq ladder rung (`agent/router.py`), `.env.example`, and
+  `docs/ARCHITECTURE.md`. Note the full model id is `groq/openai/gpt-oss-120b` —
+  Groq's own ids are namespaced, and only the first path segment is the provider.
+
 ### Agentic RAG v1 (2026-07-19)
 
 **Experimental track** — learning-first, retrieval-only v1 tool scope. The eval gate from

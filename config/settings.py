@@ -203,7 +203,7 @@ class LLMSettings(BaseSettings):
     )
 
     # Agent role→model routing (design: 2026-07-16-agentic-rag-v1). Format
-    # "provider/model", e.g. LLM_ROLE_GRADER=groq/llama-3.1-8b-instant.
+    # "provider/model", e.g. LLM_ROLE_GRADER=groq/openai/gpt-oss-20b.
     role_interpreter: Optional[str] = Field(
         default=None, description="Model id for the query-interpreter role"
     )
@@ -234,7 +234,7 @@ class LLMSettings(BaseSettings):
         if "/" not in normalized:
             raise ValueError(
                 f"Invalid role model id '{v}'. Expected 'provider/model' format, "
-                "e.g. 'groq/llama-3.3-70b-versatile'."
+                "e.g. 'groq/openai/gpt-oss-120b'."
             )
         return normalized
 

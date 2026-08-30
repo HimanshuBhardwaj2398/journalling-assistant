@@ -1,7 +1,8 @@
 """Runner scores strategies against a dataset using fake retrievers."""
 
 from evals.dataset import Dimensions, EvalRow, Persona, QuestionType, Register
-from evals.run import evaluate_strategy, run_strategy_with_langfuse
+from evals.producers import Production
+from evals.run import evaluate_strategy, merge_multi_query, run_strategy_with_langfuse
 from retrieval.query import SearchResult
 
 
@@ -136,3 +137,150 @@ def test_langfuse_path_returns_none_when_disabled():
         DisabledTracer(), retriever, rows, k_values=[1], dataset_name="ds", run_name="run"
     )
     assert report is None
+
+
+def test_merge_preserves_first_query_order():
+    per_query = [[_res("u1", 1, 1), _res("u2", 2, 2)], [_res("u3", 3, 1)]]
+    merged = merge_multi_query(per_query, cap=10)
+    assert [r.chunk_uuid for r in merged] == ["u1", "u2", "u3"]
+
+
+def test_merge_dedups_across_queries():
+    per_query = [[_res("u1", 1, 1)], [_res("u1", 1, 1), _res("u2", 2, 2)]]
+    merged = merge_multi_query(per_query, cap=10)
+    assert [r.chunk_uuid for r in merged] == ["u1", "u2"]
+
+
+def test_merge_caps_total_length():
+    per_query = [[_res(f"u{i}", i, i) for i in range(5)], [_res("u9", 9, 1)]]
+    merged = merge_multi_query(per_query, cap=3)
+    assert len(merged) == 3
+
+
+def test_merge_renumbers_ranks():
+    per_query = [[_res("u1", 1, 7)], [_res("u2", 2, 3)]]
+    merged = merge_multi_query(per_query, cap=10)
+    assert [r.rank for r in merged] == [1, 2]
+
+
+def test_merge_falls_back_to_text_when_uuid_missing():
+    a = SearchResult(text="same", chunk_uuid=None, document_id=1, rank=1)
+    b = SearchResult(text="same", chunk_uuid=None, document_id=1, rank=1)
+    assert len(merge_multi_query([[a], [b]], cap=10)) == 1
+
+
+def test_merge_handles_no_queries():
+    assert merge_multi_query([], cap=5) == []
+
+
+def test_merge_does_not_mutate_the_callers_results():
+    # Renumbering is the eval's own addition, not something retrieve_node does.
+    # A retriever that returns cached or shared objects (FakeRetriever does)
+    # would otherwise leak one arm's ranks into the next arm's audit output.
+    original = _res("u1", 1, 7)
+    merge_multi_query([[original]], cap=10)
+    assert original.rank == 7
+
+
+def test_evaluate_strategy_defaults_to_the_raw_question():
+    seen = []
+
+    class RecordingRetriever:
+        name = "rec"
+
+        def retrieve(self, query, k=5):
+            seen.append(query)
+            return [_res("u1", 1, 1)]
+
+    evaluate_strategy(RecordingRetriever(), [_row("r1", chunk_uuids=["u1"])], k_values=[1])
+    assert seen == ["q"]
+
+
+def test_evaluate_strategy_searches_every_produced_query():
+    seen = []
+
+    class RecordingRetriever:
+        name = "rec"
+
+        def retrieve(self, query, k=5):
+            seen.append(query)
+            return [_res(f"u-{query}", 1, 1)]
+
+    evaluate_strategy(
+        RecordingRetriever(),
+        [_row("r1", chunk_uuids=["u-a"])],
+        k_values=[2],
+        producer=lambda q: Production(queries=["a", "b"]),
+    )
+    assert seen == ["a", "b"]
+
+
+def test_evaluate_strategy_records_production_diagnostics():
+    report = evaluate_strategy(
+        FakeRetriever([_res("u1", 1, 1)]),
+        [_row("r1", chunk_uuids=["u1"])],
+        k_values=[1],
+        producer=lambda q: Production(queries=["x"], intent="corpus_question", fallback=True),
+    )
+    entry = report.per_row[0]
+    assert entry["queries"] == ["x"]
+    assert entry["fallback"] is True
+    assert entry["intent"] == "corpus_question"
+
+
+def test_diagnostic_keys_do_not_disturb_aggregation():
+    # _aggregate reads only r["scores"]; the extra keys must stay inert.
+    report = evaluate_strategy(
+        FakeRetriever([_res("u1", 1, 1)]),
+        [_row("r1", chunk_uuids=["u1"])],
+        k_values=[1],
+        producer=lambda q: Production(queries=["x"], fallback=True),
+    )
+    assert report.overall["recall@1"] == 1.0
+    assert "fallback" not in report.overall
+
+
+def test_producer_failure_is_recorded_as_a_row_error_not_a_crash():
+    def exploding(_question):
+        raise RuntimeError("model down")
+
+    report = evaluate_strategy(
+        FakeRetriever([_res("u1", 1, 1)]),
+        [_row("r1", chunk_uuids=["u1"])],
+        k_values=[1],
+        producer=exploding,
+    )
+    assert report.per_row == []
+    assert report.errors[0]["id"] == "r1"
+
+
+def test_merged_results_are_capped_at_the_metric_budget():
+    # Three queries returning five distinct hits each = 15 candidates; the
+    # merged list handed to scoring must still be max(k_values) long, or a
+    # verbose arm would be scored over a longer list than the control.
+    seen_lengths = []
+
+    class WideRetriever:
+        name = "wide"
+
+        def retrieve(self, query, k=5):
+            return [_res(f"{query}-{i}", i, i + 1) for i in range(5)]
+
+    original_score = evaluate_strategy.__globals__["score_output"]
+
+    def spy(row, retrieved, k_values):
+        seen_lengths.append(len(retrieved))
+        return original_score(row, retrieved, k_values)
+
+    evaluate_strategy.__globals__["score_output"] = spy
+    try:
+        evaluate_strategy(
+            WideRetriever(),
+            [_row("r1", chunk_uuids=["a-0"])],
+            k_values=[3],
+            producer=lambda q: Production(queries=["a", "b", "c"]),
+        )
+    finally:
+        evaluate_strategy.__globals__["score_output"] = original_score
+
+    assert seen_lengths == [3]

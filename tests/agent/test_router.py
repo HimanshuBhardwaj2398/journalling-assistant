@@ -10,19 +10,19 @@ def test_default_roles(monkeypatch):
 
     model, fallbacks = resolve_role("interpreter")
     assert model == "ollama/qwen3:8b"
-    assert fallbacks == ["groq/llama-3.3-70b-versatile", "openai/gpt-4o-mini"]
+    assert fallbacks == ["groq/openai/gpt-oss-120b", "openai/gpt-4o-mini"]
 
     model, fallbacks = resolve_role("answerer")
-    assert model == "groq/llama-3.3-70b-versatile"
+    assert model == "groq/openai/gpt-oss-120b"
     assert fallbacks == ["openai/gpt-4o-mini"]
 
 
 def test_env_override(monkeypatch):
-    monkeypatch.setenv("LLM_ROLE_GRADER", "groq/llama-3.1-8b-instant")
+    monkeypatch.setenv("LLM_ROLE_GRADER", "groq/openai/gpt-oss-20b")
     from agent.router import resolve_role
 
     model, fallbacks = resolve_role("grader")
-    assert model == "groq/llama-3.1-8b-instant"
+    assert model == "groq/openai/gpt-oss-20b"
     assert fallbacks == ["openai/gpt-4o-mini"]  # only rungs above groq tier
 
 
@@ -45,7 +45,7 @@ def test_unknown_role_raises(monkeypatch):
 def test_malformed_role_override_rejected_at_settings_construction(monkeypatch):
     # Forgot the provider prefix: must fail loudly at construction, not map to
     # tier -1 and get silently served by the weakest ladder rung at request time.
-    monkeypatch.setenv("LLM_ROLE_ANSWERER", "llama-3.3-70b-versatile")
+    monkeypatch.setenv("LLM_ROLE_ANSWERER", "gpt-oss-120b")
     from pydantic import ValidationError
 
     from config.settings import LLMSettings
@@ -72,7 +72,7 @@ def test_client_for_role_wires_chain(monkeypatch):
 
     client = client_for_role("interpreter")
     assert client.model_id == "ollama/qwen3:8b"
-    assert client.fallback_models == ["groq/llama-3.3-70b-versatile", "openai/gpt-4o-mini"]
+    assert client.fallback_models == ["groq/openai/gpt-oss-120b", "openai/gpt-4o-mini"]
 
 
 def test_bogus_env_provider_does_not_break_role_resolution(monkeypatch):
@@ -86,4 +86,4 @@ def test_bogus_env_provider_does_not_break_role_resolution(monkeypatch):
 
     client = client_for_role("interpreter")
     assert client.model_id == "ollama/qwen3:8b"
-    assert client.fallback_models == ["groq/llama-3.3-70b-versatile", "openai/gpt-4o-mini"]
+    assert client.fallback_models == ["groq/openai/gpt-oss-120b", "openai/gpt-4o-mini"]

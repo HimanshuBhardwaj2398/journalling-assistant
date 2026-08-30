@@ -140,7 +140,7 @@ an `AnswerTrace` with the exact prompts, context size, model ID, and latency.
 
 [`LLMClient`](../retrieval/llm_client.py) is one litellm-backed interface over
 three providers, selected by `LLM_PROVIDER`: `groq` (default,
-`llama-3.3-70b-versatile`), `ollama` (local, `qwen2.5:7b`), and `openai`
+`openai/gpt-oss-120b`), `ollama` (local, `qwen2.5:7b`), and `openai`
 (`gpt-4o-mini`); `LLM_MODEL` overrides the per-provider default.
 
 Tracing is optional: [`LangfuseTracer`](../observability/langfuse.py) no-ops
