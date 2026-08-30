@@ -137,13 +137,51 @@ def _per_row_entry(row: EvalRow, scores: dict[str, float]) -> dict:
     }
 
 
-def evaluate_strategy(retriever, rows: list[EvalRow], k_values: list[int]) -> StrategyReport:
-    """Offline scoring loop — same serialize/score functions as the Langfuse path."""
+def _resolve_producer(producer):
+    """Default to the raw question, importing lazily.
+
+    evals.producers pulls agent.interpreter and thence retrieval.query, so a
+    module-level import here would drag the retrieval stack into `import
+    evals.run` and break this module's lazy-import structure (see main()).
+    """
+    if producer is not None:
+        return producer
+    from evals.producers import raw_producer
+
+    return raw_producer
+
+
+def evaluate_strategy(
+    retriever,
+    rows: list[EvalRow],
+    k_values: list[int],
+    producer=None,
+) -> StrategyReport:
+    """Offline scoring loop — same serialize/score functions as the Langfuse path.
+
+    Args:
+        retriever: Anything conforming to the Retriever port.
+        rows: Dataset rows with ground truth already resolved.
+        k_values: Cutoffs to score at; ``max(k_values)`` is the retrieval budget.
+        producer: Optional question -> Production. Defaults to searching the raw
+            question, which keeps existing runs and committed results identical.
+    """
+    producer = _resolve_producer(producer)
+    cap = max(k_values)
     report = StrategyReport(strategy=retriever.name)
     for row in rows:
         try:
-            retrieved = serialize_results(retriever.retrieve(row.question, k=max(k_values)))
-            report.per_row.append(_per_row_entry(row, score_output(row, retrieved, k_values)))
+            production = producer(row.question)
+            per_query = [retriever.retrieve(q, k=cap) for q in production.queries]
+            retrieved = serialize_results(merge_multi_query(per_query, cap=cap))
+            entry = _per_row_entry(row, score_output(row, retrieved, k_values))
+            entry.update(
+                queries=production.queries,
+                intent=production.intent,
+                strategy_hint=production.strategy_hint,
+                fallback=production.fallback,
+            )
+            report.per_row.append(entry)
         except Exception as exc:  # per-row failures are data, not crashes
             logger.warning("row %s failed on %s: %s", row.id, retriever.name, exc)
             report.errors.append({"id": row.id, "error": str(exc)})
@@ -159,18 +197,29 @@ def run_strategy_with_langfuse(
     dataset_name: str,
     run_name: str,
     metadata: Optional[dict[str, str]] = None,
+    producer=None,
 ) -> Optional[StrategyReport]:
     """Run one strategy as a Langfuse dataset experiment. None when Langfuse is off.
 
     Every hosted item becomes a trace scored with the same functions the offline
     loop uses; local rows missing from the outcomes are reported as errors.
+    The ``producer`` seam matches ``evaluate_strategy`` so both paths score the
+    same arm the same way.
     """
     rows_by_id = {row.id: row for row in rows}
+    producer = _resolve_producer(producer)
+    cap = max(k_values)
 
     def task(item_id: str, item_input) -> dict:
         row = rows_by_id.get(item_id)
         question = row.question if row else (item_input or {}).get("question", "")
-        return {"retrieved": serialize_results(retriever.retrieve(question, k=max(k_values)))}
+        production = producer(question)
+        per_query = [retriever.retrieve(q, k=cap) for q in production.queries]
+        return {
+            "retrieved": serialize_results(merge_multi_query(per_query, cap=cap)),
+            "queries": production.queries,
+            "fallback": production.fallback,
+        }
 
     def scorer(item_id: str, output: dict) -> dict[str, float]:
         row = rows_by_id.get(item_id)
