@@ -2,6 +2,10 @@
 
 pgvector renders a vector as ``[0.1,-0.2,...]`` over a raw query, which arrives
 as a str and happens to be valid JSON — so json.loads is the whole parser.
+
+Reads go through the shared ``session_scope`` rather than a private engine, so
+the atlas inherits the application pool (pre-ping and keepalives — Neon drops
+idle connections) and follows ``set_default_database`` like every other caller.
 """
 
 from __future__ import annotations
@@ -10,14 +14,15 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
-from config.settings import DatabaseSettings, VectorSettings
-from core.exceptions import CollectionError, DatabaseConnectionError
+from config.settings import VectorSettings
+from core.exceptions import CollectionError
+from db.database import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +73,7 @@ def fingerprint(uuids: Iterable[str]) -> str:
     return f"{len(uuids)}-{hashlib.md5(','.join(uuids).encode()).hexdigest()}"
 
 
-def rows_to_frame(rows: Sequence[tuple]) -> tuple[np.ndarray, pd.DataFrame]:
+def rows_to_frame(rows: Sequence[Sequence[Any]]) -> tuple[np.ndarray, pd.DataFrame]:
     """Split query rows into a (n, dim) matrix and a metadata frame."""
     if not rows:
         raise CollectionError(
@@ -80,23 +85,11 @@ def rows_to_frame(rows: Sequence[tuple]) -> tuple[np.ndarray, pd.DataFrame]:
     return vectors, df
 
 
-def _engine():
-    """Read-only engine over the configured database.
-
-    DatabaseSettings loads .env itself and resolves to the pooled endpoint,
-    which is what bulk analytical reads should use.
-    """
-    url = DatabaseSettings().url
-    if not url:
-        raise DatabaseConnectionError("No database URL configured — set DB_URL or DATABASE_URL.")
-    return create_engine(url.replace("postgresql://", "postgresql+psycopg2://", 1))
-
-
 def fetch() -> tuple[np.ndarray, pd.DataFrame]:
     """Read the configured collection straight from Postgres."""
     collection = VectorSettings().collection_name
-    with _engine().connect() as conn:
-        rows = conn.execute(QUERY, {"collection": collection}).fetchall()
+    with session_scope() as session:
+        rows = session.execute(QUERY, {"collection": collection}).fetchall()
     logger.info("Loaded %d chunks from collection %s", len(rows), collection)
     return rows_to_frame(rows)
 
@@ -120,8 +113,8 @@ def load(refresh: bool = False, cache_dir: Path = CACHE_DIR) -> tuple[np.ndarray
 def live_uuids() -> list[str]:
     """Chunk uuids currently in the configured collection. Cheap: ids only."""
     collection = VectorSettings().collection_name
-    with _engine().connect() as conn:
-        return list(conn.execute(UUIDS_QUERY, {"collection": collection}).scalars().all())
+    with session_scope() as session:
+        return list(session.execute(UUIDS_QUERY, {"collection": collection}).scalars().all())
 
 
 def check_drift(cache_dir: Path = CACHE_DIR) -> bool:
