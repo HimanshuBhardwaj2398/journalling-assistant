@@ -71,3 +71,15 @@ def test_production_records_raw_model_output_for_audit():
     client = FakeClient(['{"intent": "corpus_question", "queries": ["a"]}'])
     result = interpreter_producer(client)("q")
     assert result.raw["queries"] == ["a"]
+
+
+def test_other_intent_is_backfilled_and_flagged():
+    # interpret() refuses to backfill for intent="other" (seam invariant: the
+    # raw message must not leak toward retrieval). The eval overrides that --
+    # scoring 0 would blame retrieval for a classification slip -- so the row
+    # is backfilled, flagged, and left identifiable by its recorded intent.
+    client = FakeClient(['{"intent": "other", "queries": []}'])
+    result = interpreter_producer(client)("hello there")
+    assert result.queries == ["hello there"]
+    assert result.fallback is True
+    assert result.intent == "other"

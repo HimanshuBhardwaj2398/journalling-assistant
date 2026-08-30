@@ -61,9 +61,18 @@ def interpreter_producer(client: Any, *, first_only: bool = False) -> Producer:
         interpreted = interpreter.interpret(question)
         queries = list(interpreted.queries)
 
-        # interpret() backfills [question] on a parse failure AND on an empty
-        # queries list; both collapse this arm onto the control, so both are
-        # reported as a fallback.
+        # interpret() backfills [question] on a parse failure, but ONLY for
+        # intent="corpus_question" — it deliberately refuses to for
+        # intent="other", so the raw message cannot leak toward retrieval
+        # (seam invariant, agent/interpreter.py). We override that here: an
+        # eval row scoring 0 because the model called it small talk would
+        # blame retrieval for a classification slip. Backfill and flag it.
+        #
+        # So `fallback` covers three collapses onto the control — parse
+        # failure, an empty rewrite list, and a row classified "other". They
+        # are told apart by the recorded `intent`: None means the control arm,
+        # "other" means misclassified, "corpus_question" with fallback set
+        # means the parse died or the model echoed the question back.
         fallback = queries == [question]
         if not queries:
             queries = [question]
