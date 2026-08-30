@@ -23,7 +23,7 @@ class TestEvalLLMClientInit:
         from retrieval.llm_client import EvalLLMClient
 
         client = EvalLLMClient()
-        assert client.model_id == "groq/llama-3.3-70b-versatile"
+        assert client.model_id == "groq/openai/gpt-oss-120b"
 
     def test_ollama_provider(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "ollama")
@@ -108,12 +108,12 @@ class TestLLMClientFallbackChain:
         with patch.object(litellm, "completion", side_effect=flaky_completion):
             client = LLMClient(
                 model_id="ollama/qwen3:8b",
-                fallback_models=["groq/llama-3.3-70b-versatile"],
+                fallback_models=["groq/openai/gpt-oss-120b"],
             )
             result = client.complete(messages=[{"role": "user", "content": "hi"}])
 
         assert result == "ok"
-        assert calls == ["ollama/qwen3:8b", "groq/llama-3.3-70b-versatile"]
+        assert calls == ["ollama/qwen3:8b", "groq/openai/gpt-oss-120b"]
 
     def test_all_rungs_fail_raises_last_error(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "groq")

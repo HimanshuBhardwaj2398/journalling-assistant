@@ -27,7 +27,7 @@ def _row(**overrides) -> EvalRow:
             register=Register.COLLOQUIAL,
         ),
         origin="synthetic",
-        model_version="groq/llama-3.3-70b-versatile",
+        model_version="groq/openai/gpt-oss-120b",
     )
     base.update(overrides)
     return EvalRow(**base)

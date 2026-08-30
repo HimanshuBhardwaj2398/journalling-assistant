@@ -14,10 +14,14 @@ from retrieval.llm_client import LLMClient
 
 Role = Literal["interpreter", "grader", "answerer"]
 
+# Model ids are "<provider>/<model>", split on the FIRST "/" — Groq's own ids
+# are namespaced ("openai/gpt-oss-120b"), so the full rung is
+# "groq/openai/gpt-oss-120b". Dropping the "groq/" prefix does not fail
+# validation; it silently routes to OpenAI.
 ROLE_DEFAULTS: dict[str, str] = {
     "interpreter": "ollama/qwen3:8b",
     "grader": "ollama/qwen3:8b",
-    "answerer": "groq/llama-3.3-70b-versatile",
+    "answerer": "groq/openai/gpt-oss-120b",
 }
 
 # One rung per tier; fallbacks are the rungs strictly above the primary's tier.
@@ -25,7 +29,7 @@ ROLE_DEFAULTS: dict[str, str] = {
 # whole ladder as fallbacks, weakest rung first — pinned by test.
 LADDER: list[str] = [
     "ollama/qwen3:8b",
-    "groq/llama-3.3-70b-versatile",
+    "groq/openai/gpt-oss-120b",
     "openai/gpt-4o-mini",
 ]
 

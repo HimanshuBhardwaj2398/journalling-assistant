@@ -2,7 +2,7 @@
 Multi-provider LLM client for retrieval and eval pipelines.
 
 Configure via environment variables (see config.settings.LLMSettings):
-  LLM_PROVIDER=groq       → groq/llama-3.3-70b-versatile (default)
+  LLM_PROVIDER=groq       → groq/openai/gpt-oss-120b (default)
   LLM_PROVIDER=ollama     → ollama/qwen2.5:7b (local, requires Ollama running)
   LLM_PROVIDER=openai     → openai/gpt-4o-mini
 
@@ -19,7 +19,7 @@ Usage:
     # Explicit model with a fallback chain (escalates a rung on any error):
     client = LLMClient(
         model_id="ollama/qwen3:8b",
-        fallback_models=["groq/llama-3.3-70b-versatile"],
+        fallback_models=["groq/openai/gpt-oss-120b"],
     )
 
 For ollama models, `api_base` is passed per call (never set globally on
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 litellm.suppress_debug_info = True
 
 _PROVIDER_DEFAULTS: dict[str, str] = {
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     "ollama": "qwen2.5:7b",
     "openai": "gpt-4o-mini",
 }
