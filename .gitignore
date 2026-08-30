@@ -58,3 +58,7 @@ docs/plans/*
 !docs/plans/*-research.md
 docs/sprints/
 docs/deployment/
+
+# Atlas caches are regenerable from the database
+data/atlas/*
+!data/atlas/.gitkeep
