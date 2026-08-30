@@ -24,6 +24,15 @@ def test_bootstrap_ci_is_seed_reproducible():
     )
 
 
+def test_bootstrap_ci_actually_depends_on_the_seed():
+    # Reproducibility alone is satisfied by ignoring the seed entirely. Only a
+    # continuous input has a fine enough grid of resample means for different
+    # seeds to land on different percentiles, so this is where the wiring is
+    # provable. Reported intervals rest on the seed being real.
+    values = [i / 40 for i in range(40)]
+    assert bootstrap_ci(values, seed=42) != bootstrap_ci(values, seed=43)
+
+
 def test_bootstrap_ci_rejects_empty_input():
     with pytest.raises(ValueError):
         bootstrap_ci([], iterations=10, seed=1)
