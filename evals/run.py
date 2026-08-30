@@ -273,7 +273,7 @@ def main() -> None:  # pragma: no cover - thin CLI; components tested above
     from db.database import session_scope
     from evals.corpus import CorpusManifest, verify_manifest
     from evals.dataset import load_dataset
-    from evals.report import render_markdown
+    from evals.report import render_comparison, render_markdown
     from observability.langfuse import get_langfuse_tracer
     from retrieval.registry import default_retrievers
 
@@ -285,6 +285,18 @@ def main() -> None:  # pragma: no cover - thin CLI; components tested above
     parser.add_argument("--allow-drift", action="store_true")
     parser.add_argument("--langfuse-dataset", default="retrieval-eval-v1")
     parser.add_argument("--no-langfuse", action="store_true", help="force the offline loop")
+    parser.add_argument(
+        "--interpreter-model",
+        help="Full model id for the interpreter arms, e.g. groq/openai/gpt-oss-120b. "
+        "Note Groq's own ids are namespaced, so the provider prefix is required: "
+        "'openai/gpt-oss-120b' would route to OpenAI. Omit to run the plain "
+        "strategy sweep.",
+    )
+    parser.add_argument(
+        "--interpreter-strategy",
+        default="hybrid",
+        help="Strategy pinned for every interpreter arm, so only the rewrite varies.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -316,8 +328,31 @@ def main() -> None:  # pragma: no cover - thin CLI; components tested above
         "k_values": args.k,
         "strategies": {},
     }
-    for name, retriever in default_retrievers().items():
-        logger.info("evaluating strategy: %s", name)
+    retrievers = default_retrievers()
+    if args.interpreter_model:
+        from evals.producers import interpreter_producer, raw_producer
+        from retrieval.llm_client import LLMClient
+
+        pinned = retrievers[args.interpreter_strategy]
+        short = args.interpreter_model.rsplit("/", 1)[-1]
+        client = LLMClient(model_id=args.interpreter_model)
+        # One client, three arms: the control never calls it, and the two
+        # interpreter arms share it so both see the same model configuration.
+        arms = [
+            (f"{args.interpreter_strategy}+raw", pinned, raw_producer),
+            (f"{args.interpreter_strategy}+{short}", pinned, interpreter_producer(client)),
+            (
+                f"{args.interpreter_strategy}+{short}-first",
+                pinned,
+                interpreter_producer(client, first_only=True),
+            ),
+        ]
+        results["interpreter_model"] = args.interpreter_model
+    else:
+        arms = [(name, retriever, None) for name, retriever in retrievers.items()]
+
+    for name, retriever, producer in arms:
+        logger.info("evaluating arm: %s", name)
         report = None
         if tracer is not None:
             report = run_strategy_with_langfuse(
@@ -328,9 +363,10 @@ def main() -> None:  # pragma: no cover - thin CLI; components tested above
                 dataset_name=args.langfuse_dataset,
                 run_name=f"{name}-{git_sha or 'nogit'}-{stamp}",
                 metadata={"strategy": name, "git_sha": git_sha},
+                producer=producer,
             )
         if report is None:
-            report = evaluate_strategy(retriever, rows, k_values=args.k)
+            report = evaluate_strategy(retriever, rows, k_values=args.k, producer=producer)
         results["strategies"][name] = {
             "overall": report.overall,
             "by_question_type": report.by_question_type,
@@ -344,6 +380,15 @@ def main() -> None:  # pragma: no cover - thin CLI; components tested above
     out_path = out_dir / f"{git_sha or 'nogit'}-{stamp}.json"
     out_path.write_text(json.dumps(results, indent=2))
     print(render_markdown(results))
+    if args.interpreter_model:
+        print()
+        print(
+            render_comparison(
+                results,
+                control=f"{args.interpreter_strategy}+raw",
+                metrics=["mrr", *[f"recall@{k}" for k in args.k]],
+            )
+        )
     print(f"\nresults written to {out_path}")
 
 
