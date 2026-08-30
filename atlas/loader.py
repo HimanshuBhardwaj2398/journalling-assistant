@@ -117,20 +117,22 @@ def load(refresh: bool = False, cache_dir: Path = CACHE_DIR) -> tuple[np.ndarray
     return vectors, df
 
 
+def live_uuids() -> list[str]:
+    """Chunk uuids currently in the configured collection. Cheap: ids only."""
+    collection = VectorSettings().collection_name
+    with _engine().connect() as conn:
+        return list(conn.execute(UUIDS_QUERY, {"collection": collection}).scalars().all())
+
+
 def check_drift(cache_dir: Path = CACHE_DIR) -> bool:
-    """True when the cache still matches the database. Cheap: uuids only."""
+    """True when the cache still matches the database."""
     stamp = cache_dir / "fingerprint.json"
     if not stamp.exists():
         return True
 
-    collection = VectorSettings().collection_name
-    with _engine().connect() as conn:
-        live = conn.execute(UUIDS_QUERY, {"collection": collection}).scalars().all()
-
     cached = json.loads(stamp.read_text())["corpus"]
-    if fingerprint(live) == cached:
+    live = fingerprint(live_uuids())
+    if cached == live:
         return True
-    logger.warning(
-        "Atlas cache is stale (%s -> %s). Call load(refresh=True).", cached, fingerprint(live)
-    )
+    logger.warning("Atlas cache is stale (%s -> %s). Call load(refresh=True).", cached, live)
     return False
