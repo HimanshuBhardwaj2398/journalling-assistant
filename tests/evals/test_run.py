@@ -1,7 +1,7 @@
 """Runner scores strategies against a dataset using fake retrievers."""
 
 from evals.dataset import Dimensions, EvalRow, Persona, QuestionType, Register
-from evals.run import evaluate_strategy, run_strategy_with_langfuse
+from evals.run import evaluate_strategy, merge_multi_query, run_strategy_with_langfuse
 from retrieval.query import SearchResult
 
 
@@ -136,3 +136,37 @@ def test_langfuse_path_returns_none_when_disabled():
         DisabledTracer(), retriever, rows, k_values=[1], dataset_name="ds", run_name="run"
     )
     assert report is None
+
+
+def test_merge_preserves_first_query_order():
+    per_query = [[_res("u1", 1, 1), _res("u2", 2, 2)], [_res("u3", 3, 1)]]
+    merged = merge_multi_query(per_query, cap=10)
+    assert [r.chunk_uuid for r in merged] == ["u1", "u2", "u3"]
+
+
+def test_merge_dedups_across_queries():
+    per_query = [[_res("u1", 1, 1)], [_res("u1", 1, 1), _res("u2", 2, 2)]]
+    merged = merge_multi_query(per_query, cap=10)
+    assert [r.chunk_uuid for r in merged] == ["u1", "u2"]
+
+
+def test_merge_caps_total_length():
+    per_query = [[_res(f"u{i}", i, i) for i in range(5)], [_res("u9", 9, 1)]]
+    merged = merge_multi_query(per_query, cap=3)
+    assert len(merged) == 3
+
+
+def test_merge_renumbers_ranks():
+    per_query = [[_res("u1", 1, 7)], [_res("u2", 2, 3)]]
+    merged = merge_multi_query(per_query, cap=10)
+    assert [r.rank for r in merged] == [1, 2]
+
+
+def test_merge_falls_back_to_text_when_uuid_missing():
+    a = SearchResult(text="same", chunk_uuid=None, document_id=1, rank=1)
+    b = SearchResult(text="same", chunk_uuid=None, document_id=1, rank=1)
+    assert len(merge_multi_query([[a], [b]], cap=10)) == 1
+
+
+def test_merge_handles_no_queries():
+    assert merge_multi_query([], cap=5) == []

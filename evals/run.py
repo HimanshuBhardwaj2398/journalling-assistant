@@ -57,6 +57,32 @@ def serialize_results(results) -> list[dict]:
     ]
 
 
+def merge_multi_query(per_query_results: list[list], cap: int) -> list:
+    """Merge per-query result lists exactly as ``retrieve_node`` does.
+
+    Dedup key is ``chunk_uuid or text``, insertion order is preserved (so the
+    first query dominates the top ranks), and the merged list is capped. Ranks
+    are renumbered 1..n because scoring reads list order, and a stale rank in
+    the results JSON would mislead anyone auditing a run.
+
+    Mirrors agent/nodes.py::retrieve_node deliberately: an eval with its own
+    merge semantics stops predicting production behavior.
+    """
+    seen: set = set()
+    merged: list = []
+    for results in per_query_results:
+        for result in results:
+            key = result.chunk_uuid or result.text
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(result)
+    merged = merged[:cap]
+    for rank, result in enumerate(merged, start=1):
+        result.rank = rank
+    return merged
+
+
 def score_output(row: EvalRow, retrieved: list[dict], k_values: list[int]) -> dict[str, float]:
     """Score one row's serialized retrieval output against its local ground truth."""
     if row.chunk_uuids:
