@@ -1,6 +1,8 @@
 """Loader tests: the row -> (vectors, df) transform and the corpus fingerprint."""
 
 import json
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -101,3 +103,57 @@ def test_refresh_bypasses_the_cache(tmp_path, monkeypatch):
     loader.load(refresh=True, cache_dir=tmp_path)
 
     assert len(calls) == 2
+
+
+def _fake_session_scope(rows, recorder):
+    """Stand in for db.database.session_scope, recording what the loader executes."""
+
+    class _Result:
+        def fetchall(self):
+            return rows
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return [r[0] for r in rows]
+
+    class _Session:
+        def execute(self, query, params):
+            recorder.append((str(query), params))
+            return _Result()
+
+    @contextmanager
+    def scope():
+        yield _Session()
+
+    return scope
+
+
+def test_fetch_reads_through_the_shared_session_scope(monkeypatch):
+    """The atlas must not build its own engine — it shares the application pool.
+
+    A private engine skips pool_pre_ping/keepalives (Neon drops idle connections)
+    and leaks a fresh pool per call.
+    """
+    calls = []
+    rows = [_row("a", [1.0, 0.0])]
+    monkeypatch.setattr(loader, "session_scope", _fake_session_scope(rows, calls))
+    monkeypatch.setattr(loader, "VectorSettings", lambda: SimpleNamespace(collection_name="bt"))
+
+    vectors, df = loader.fetch()
+
+    assert len(calls) == 1
+    assert calls[0][1] == {"collection": "bt"}
+    assert vectors.shape == (1, 2)
+    assert list(df["uuid"]) == ["a"]
+
+
+def test_live_uuids_reads_through_the_shared_session_scope(monkeypatch):
+    calls = []
+    rows = [("a",), ("b",)]
+    monkeypatch.setattr(loader, "session_scope", _fake_session_scope(rows, calls))
+    monkeypatch.setattr(loader, "VectorSettings", lambda: SimpleNamespace(collection_name="bt"))
+
+    assert loader.live_uuids() == ["a", "b"]
+    assert calls[0][1] == {"collection": "bt"}
