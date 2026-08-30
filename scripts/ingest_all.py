@@ -43,7 +43,19 @@ CATALOG = _PROJECT_ROOT / "data" / "suttacentral_catalog.jsonl"
 EXCLUDED_KN_PREFIXES = {"ja", "cp"}
 
 MAX_ATTEMPTS = 3
-RETRY_BACKOFF_SECONDS = (2, 8)
+# SuttaCentral answers some requests in >20s and 502s under strain, so back off
+# generously rather than hammering an upstream that is already struggling.
+RETRY_BACKOFF_SECONDS = (10, 45)
+
+
+def _lookup_document_id(source: str) -> Optional[int]:
+    """Return the document id for ``source``, if a row already exists."""
+    from db.database import session_scope
+    from db.schema import Document
+
+    with session_scope() as session:
+        row = session.query(Document.id).filter(Document.file_path == source).first()
+        return int(row[0]) if row else None
 
 
 def _uid_prefix(uid: str) -> str:
@@ -122,6 +134,13 @@ async def _run_shard(
         last_error = ""
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
+                # A failed attempt still leaves the document row it created, so
+                # re-running process(source) would collide on the unique
+                # file_path index and the retry could never succeed. Re-resolve
+                # the id each attempt and reprocess in place instead.
+                if existing_id is None and attempt > 1:
+                    existing_id = _lookup_document_id(source)
+
                 if existing_id is not None:
                     result = await orchestrator.process(existing_id, reprocess_mode="full")
                 else:
@@ -138,7 +157,7 @@ async def _run_shard(
             except Exception as exc:  # keep the shard alive; record and move on
                 last_error = f"{type(exc).__name__}: {exc}"
                 if attempt < MAX_ATTEMPTS:
-                    time.sleep(RETRY_BACKOFF_SECONDS[attempt - 1])
+                    await asyncio.sleep(RETRY_BACKOFF_SECONDS[attempt - 1])
         else:
             failures.append({"source": source, "error": last_error})
 
